@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bid Requirements Reader — Modonix</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --paper:#F5F7F9;
+    --card:#FFFFFF;
+    --ink:#1A2530;
+    --navy:#16304B;
+    --blue:#1E63A8;
+    --blue-tint:#E7F0F8;
+    --rust:#B4451F;
+    --rust-tint:#FBECE4;
+    --green:#2E7D57;
+    --muted:#64748B;
+    --line:#D9E0E7;
+    --line-strong:#C2CCD6;
+    --display:'Space Grotesk',system-ui,sans-serif;
+    --body:'Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--body);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px;margin:0 auto;padding:0 20px 80px}
+
+  header.top{
+    border-bottom:2px solid var(--navy);
+    background:var(--card);
+    margin-bottom:26px;
+  }
+  .top-inner{max-width:940px;margin:0 auto;padding:22px 20px 20px}
+  .brandline{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  .brandmark{
+    font-family:var(--mono);font-weight:600;font-size:12px;letter-spacing:.22em;
+    color:var(--navy);border:1.5px solid var(--navy);padding:3px 8px;border-radius:2px;
+  }
+  .brand-tag{font-size:12px;color:var(--muted);letter-spacing:.02em}
+  h1{
+    font-family:var(--display);font-weight:700;font-size:30px;line-height:1.1;
+    margin:0 0 6px;color:var(--navy);letter-spacing:-.01em;
+  }
+  .sub{font-size:14.5px;color:var(--muted);max-width:660px;margin:0}
+  .sub b{color:var(--ink);font-weight:600}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:6px;
+    padding:20px;margin-bottom:18px;
+  }
+  .card h2{
+    font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 14px;
+  }
+  label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 6px;letter-spacing:.01em}
+  input[type=text],input[type=password],textarea{
+    width:100%;font-family:var(--body);font-size:14px;color:var(--ink);
+    background:var(--paper);border:1px solid var(--line-strong);border-radius:4px;
+    padding:10px 11px;
+  }
+  input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:var(--blue)}
+  textarea{min-height:150px;resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  .hint{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.45}
+
+  .keyrow{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  .keyrow>div:first-child{flex:1;min-width:240px}
+  .modelchip{
+    font-family:var(--mono);font-size:11.5px;color:var(--navy);background:var(--blue-tint);
+    border:1px solid #CBDDEE;border-radius:3px;padding:8px 10px;white-space:nowrap;
+  }
+
+  .drop{
+    border:1.5px dashed var(--line-strong);border-radius:5px;background:var(--paper);
+    padding:26px 18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .drop:hover,.drop.over{border-color:var(--blue);background:var(--blue-tint)}
+  .drop .big{font-family:var(--display);font-weight:600;font-size:15px;color:var(--navy);margin-bottom:4px}
+  .drop .small{font-size:12.5px;color:var(--muted)}
+  .filelist{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+  .filepill{
+    display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);
+    border-radius:4px;padding:8px 11px;font-size:13px;
+  }
+  .filepill .nm{font-family:var(--mono);font-size:12px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filepill .sz{font-size:11.5px;color:var(--muted)}
+  .filepill .x{cursor:pointer;color:var(--muted);font-weight:600;padding:0 4px;line-height:1}
+  .filepill .x:hover{color:var(--rust)}
+
+  .toggle{display:flex;gap:0;margin-bottom:14px;border:1px solid var(--line-strong);border-radius:4px;overflow:hidden;width:fit-content}
+  .toggle button{
+    font-family:var(--body);font-size:12.5px;font-weight:600;padding:7px 15px;border:0;background:var(--card);
+    color:var(--muted);cursor:pointer;
+  }
+  .toggle button.on{background:var(--navy);color:#fff}
+
+  .run{
+    font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.01em;
+    background:var(--navy);color:#fff;border:0;border-radius:5px;padding:13px 24px;cursor:pointer;
+    transition:background .15s;
+  }
+  .run:hover{background:#0F2437}
+  .run:disabled{background:var(--line-strong);cursor:not-allowed}
+  .runbar{display:flex;align-items:center;gap:14px}
+  .spin{width:16px;height:16px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;display:none}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .note{border-radius:5px;padding:12px 14px;font-size:13.5px;margin-bottom:18px;line-height:1.5}
+  .note.err{background:var(--rust-tint);border:1px solid #EBC3B0;color:#7A2E12}
+  .note.err b{color:#5C2109}
+
+  #results{display:none}
+  .summary{
+    background:var(--navy);color:#fff;border-radius:6px;padding:18px 20px;margin-bottom:20px;
+    display:flex;flex-wrap:wrap;gap:22px 34px;align-items:flex-end;
+  }
+  .summary .proj{flex:1;min-width:200px}
+  .summary .proj .pl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#93AEC7;margin-bottom:3px;font-family:var(--mono)}
+  .summary .proj .pv{font-family:var(--display);font-weight:600;font-size:19px;line-height:1.2}
+  .stat{text-align:left}
+  .stat .n{font-family:var(--display);font-weight:700;font-size:26px;line-height:1}
+  .stat .l{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#93AEC7;margin-top:4px;font-family:var(--mono)}
+  .stat.warn .n{color:#FFB38A}
+  .stat.due .n{font-size:16px;font-family:var(--body);font-weight:600}
+
+  .grp{margin-bottom:22px}
+  .grp-h{
+    display:flex;align-items:center;gap:10px;margin:0 0 10px;padding-bottom:7px;
+    border-bottom:1px solid var(--line);
+  }
+  .grp-h .t{font-family:var(--display);font-weight:600;font-size:15px;color:var(--navy)}
+  .grp-h .c{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-left:auto}
+  .grp.watch .grp-h{border-color:#EBC3B0}
+  .grp.watch .grp-h .t{color:var(--rust)}
+
+  .item{
+    display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #EDF1F4;align-items:flex-start;
+  }
+  .item:last-child{border-bottom:0}
+  .item input[type=checkbox]{
+    width:17px;height:17px;margin-top:2px;accent-color:var(--green);flex-shrink:0;cursor:pointer;
+  }
+  .item .body{flex:1;min-width:0}
+  .item .req{font-size:14.5px;font-weight:500;color:var(--ink);line-height:1.4}
+  .item.done .req{text-decoration:line-through;color:var(--muted)}
+  .item .det{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .item .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;align-items:center}
+  .stamp{
+    font-family:var(--mono);font-size:11px;font-weight:500;color:var(--navy);
+    background:var(--blue-tint);border:1px solid #CBDDEE;border-radius:3px;padding:2px 7px;
+    letter-spacing:.01em;display:inline-flex;align-items:center;gap:5px;
+  }
+  .stamp::before{content:"§";color:var(--blue);font-weight:700}
+  .stamp.nopage{opacity:.65}
+  .stamp.nopage::before{content:"?";color:var(--rust)}
+  .flag{
+    font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    padding:2px 7px;border-radius:3px;
+  }
+  .flag.watch{background:var(--rust-tint);color:var(--rust);border:1px solid #EBC3B0}
+  .flag.verify{background:#FFF6E5;color:#8A5A00;border:1px solid #EAD8A8}
+  .note-inline{font-size:12px;color:#8A5A00;margin-top:5px;font-style:italic}
+
+  .resbar{display:flex;gap:10px;margin:24px 0 0;flex-wrap:wrap}
+  .btn2{
+    font-family:var(--body);font-size:13px;font-weight:600;background:var(--card);color:var(--navy);
+    border:1px solid var(--line-strong);border-radius:4px;padding:9px 16px;cursor:pointer;
+  }
+  .btn2:hover{background:var(--blue-tint);border-color:var(--blue)}
+  .btn2.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .btn2.primary:hover{background:#0F2437}
+
+  footer{max-width:940px;margin:40px auto 0;padding:20px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px;line-height:1.6}
+  footer b{color:var(--ink)}
+
+  @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brandline">
+      <span class="brandmark">MODONIX</span>
+      <span class="brand-tag">Estimating tools · v1</span>
+    </div>
+    <h1>Bid Requirements Reader</h1>
+    <p class="sub">Reads the <b>front end</b> of a bid and lists what you have to submit, by when, and what gets you disqualified. Every item is stamped with <b>where it came from</b>, so you verify by looking at the spec instead of trusting your memory.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <h2>Connection</h2>
+    <div class="keyrow">
+      <div>
+        <label class="fld" for="key">Anthropic API key</label>
+        <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      </div>
+      <div class="modelchip" id="modelchip">model: loading…</div>
+    </div>
+    <p class="hint">Your key stays in this browser tab only. It is never saved or sent anywhere except Anthropic. Paste it each session.</p>
+  </div>
+
+  <div class="card">
+    <h2>The bid documents</h2>
+    <div class="toggle">
+      <button id="tab-pdf" class="on" onclick="setMode('pdf')">Upload PDF</button>
+      <button id="tab-text" onclick="setMode('text')">Paste text</button>
+    </div>
+
+    <div>
+      <label class="fld" for="proj">Project name <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input type="text" id="proj" placeholder="e.g. Lockport WWTP, Mechanical" style="margin-bottom:16px">
+    </div>
+
+    <div id="mode-pdf">
+      <div class="drop" id="drop">
+        <div class="big">Drop the front-end PDF here</div>
+        <div class="small">or click to choose. Instructions to Bidders, Bid Form, Division 00 &amp; 01, addenda</div>
+      </div>
+      <input type="file" id="file" accept="application/pdf" multiple style="display:none">
+      <div class="filelist" id="filelist"></div>
+      <p class="hint">Upload the <b>front-end sections</b>, not the whole 400-page manual. That keeps it fast and accurate. Drawings and their keynotes come in the next version.</p>
+    </div>
+
+    <div id="mode-text" style="display:none">
+      <label class="fld" for="text">Paste the front-end spec text</label>
+      <textarea id="text" placeholder="Paste Instructions to Bidders, the Bid Form, addenda, and so on."></textarea>
+    </div>
+  </div>
+
+  <div class="runbar" style="margin-bottom:24px">
+    <button class="run" id="run" onclick="run()">
+      <span class="spin" id="spin"></span><span id="runlabel">Read the documents</span>
+    </button>
+    <span class="hint" id="runhint" style="margin:0"></span>
+  </div>
+
+  <div id="msg"></div>
+
+  <div id="results">
+    <div class="summary" id="summary"></div>
+    <div id="groups"></div>
+    <div class="resbar">
+      <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
+      <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <p><b>How to read this:</b> every requirement carries a source stamp (§) pointing to the spec section or page it came from. A <b>?</b> stamp means the tool could not pin the exact location, so check that one yourself. A <b>VERIFY</b> flag means the tool was not fully sure the requirement applies. The tool prepares and points. You approve.</p>
+  <p style="margin-top:8px">Built to be calibrated: run it on a bid you already closed, compare against what you know was required, and the gaps show exactly what to tune. Modonix, v1, specs only.</p>
+</footer>
+
+<script>
+const MODEL = "claude-sonnet-4-6";       // set to the model your account uses
+const MAX_TOKENS = 8000;
+document.getElementById('modelchip').textContent = "model: " + MODEL;
+
+let mode = 'pdf';
+let files = []; // {name, size, b64}
+let lastData = null;
+
+const ORDER = ["Watch-outs","Submission logistics","Bid security","Required forms & attachments","Addenda","Pricing structure","Pre-bid & site visit","Post-award","Other"];
+
+function setMode(m){
+  mode = m;
+  document.getElementById('mode-pdf').style.display = m==='pdf'?'block':'none';
+  document.getElementById('mode-text').style.display = m==='text'?'block':'none';
+  document.getElementById('tab-pdf').classList.toggle('on', m==='pdf');
+  document.getElementById('tab-text').classList.toggle('on', m==='text');
+}
+
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+drop.addEventListener('click', ()=>fileInput.click());
+drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over')});
+drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
+drop.addEventListener('drop', e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)});
+fileInput.addEventListener('change', e=>addFiles(e.target.files));
+
+function addFiles(list){
+  [...list].forEach(f=>{
+    if(f.type!=='application/pdf'){return}
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const b64 = reader.result.split(',')[1];
+      files.push({name:f.name, size:f.size, b64});
+      renderFiles();
+    };
+    reader.readAsDataURL(f);
+  });
+}
+function renderFiles(){
+  const el = document.getElementById('filelist');
+  el.innerHTML = '';
+  files.forEach((f,i)=>{
+    const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+    const d = document.createElement('div');
+    d.className='filepill';
+    d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+    d.querySelector('.nm').textContent = f.name;
+    d.querySelector('.x').onclick = ()=>{files.splice(i,1);renderFiles()};
+    el.appendChild(d);
+  });
+}
+
+const SYSTEM = `You are a senior construction estimator and bid coordinator reading the FRONT-END of a bid package for a plumbing/mechanical contractor. Your job is to extract every requirement that governs HOW the bid must be prepared and submitted, not the technical scope of work.
+
+Read the provided documents (Instructions to Bidders, Invitation/Advertisement, Bid Form, Division 00 and Division 01 sections, addenda) and pull out:
+
+- Submission logistics: bid due date and time, where and how to submit, number of copies, bid validity period.
+- Required forms & attachments: bid form, subcontractor list, non-collusion affidavit, bidder qualification statement, references, MWBE/DBE and EEO forms, Iran/vendor certifications, and any other form that must be submitted. Note if a form must be notarized.
+- Bid security: bid bond or certified check, amount or percentage, and required form.
+- Addenda: each addendum that must be acknowledged.
+- Pricing structure: base bid, alternates, unit prices, allowances, and how they must be entered.
+- Pre-bid & site visit: any pre-bid meeting or site visit, and whether attendance is MANDATORY.
+- Watch-outs / disqualifiers: anything that gets a bid rejected, such as mandatory pre-bid attendance, missing bid bond, unnotarized forms, tight submission windows, unusual insurance or bonding limits, liquidated damages, wage-rate compliance. On public work in New York this includes prevailing wage and certified payroll acknowledgment.
+- Post-award heads-up: performance bond, payment bond, insurance certificates, and submittals due after award, so nothing surprises them later.
+
+RULES:
+1. Extract only what is actually in the documents. Do NOT invent or assume requirements. Missing something is recoverable; fabricating a requirement destroys trust.
+2. For EVERY item, cite where you found it: the spec section number and/or page/paragraph. If you cannot pin the location, still include the item but set "source" to your best locator and lower the confidence.
+3. Flag disqualifiers by setting "is_watchout": true.
+4. Set "confidence" to "high", "medium", or "low". Use "low" when you are unsure the requirement applies or cannot locate it. Those are the items a human must verify.
+5. Keep "requirement" short and plain. Put amounts, percentages, form numbers, and notarization in "detail".
+
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "project": "string or null",
+  "bid_due": "date and time as stated, or null",
+  "submit_to": "where/how to submit, or null",
+  "items": [
+    {
+      "category": "Submission logistics | Required forms & attachments | Bid security | Addenda | Pricing structure | Pre-bid & site visit | Post-award | Other",
+      "requirement": "short plain-language requirement",
+      "detail": "specifics: amounts, %, form numbers, notarization, or empty string",
+      "source": "spec section and/or page, e.g. Sec 00 21 13 p.7",
+      "is_watchout": false,
+      "confidence": "high | medium | low",
+      "note": "why uncertain, if confidence is low, else empty string"
+    }
+  ]
+}`;
+
+async function run(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('msg').innerHTML='';
+  if(!key){ return showErr("Add your Anthropic API key up top first."); }
+
+  let content = [];
+  if(mode==='pdf'){
+    if(files.length===0){ return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
+    files.forEach(f=>content.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:f.b64}}));
+  } else {
+    const t = document.getElementById('text').value.trim();
+    if(!t){ return showErr("Paste the front-end spec text, or switch to <b>Upload PDF</b>."); }
+    content.push({type:"text",text:"FRONT-END SPEC TEXT:\n\n"+t});
+  }
+  const proj = document.getElementById('proj').value.trim();
+  content.push({type:"text",text:"Extract the bid submission requirements as specified."+(proj?(" Project: "+proj):"")});
+
+  setRunning(true);
+  try{
+    const res = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-api-key":key,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:SYSTEM, messages:[{role:"user",content}] })
+    });
+    if(!res.ok){
+      const errtxt = await res.text();
+      throw new Error("API "+res.status+": "+errtxt.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){ throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,600)); }
+    lastData = parsed;
+    render(parsed);
+  }catch(e){
+    showErr(cleanErr(e.message));
+  }finally{
+    setRunning(false);
+  }
+}
+
+function parseJSON(t){
+  let s = t.replace(/^```(json)?/i,'').replace(/```$/,'').trim();
+  try{ return JSON.parse(s); }catch(_){}
+  const a=s.indexOf('{'), b=s.lastIndexOf('}');
+  if(a>=0&&b>a){ try{ return JSON.parse(s.slice(a,b+1)); }catch(_){} }
+  return null;
+}
+function cleanErr(m){
+  if(/401|invalid.*key|authentication/i.test(m)) return "That API key was rejected. Check it and try again.";
+  if(/429|rate/i.test(m)) return "Rate limited by the API. Wait a moment and rerun.";
+  if(/Failed to fetch|NetworkError/i.test(m)) return "Could not reach the API. Check your connection and that the key is valid.";
+  return m;
+}
+function showErr(html){
+  document.getElementById('msg').innerHTML = `<div class="note err"><b>Hold on.</b> ${html}</div>`;
+}
+function setRunning(on){
+  document.getElementById('run').disabled = on;
+  document.getElementById('spin').style.display = on?'inline-block':'none';
+  document.getElementById('runlabel').textContent = on?'Reading…':'Read the documents';
+  document.getElementById('runhint').textContent = on?'Reading the front end and locating each requirement.':'';
+}
+
+function groupByCat(items){
+  const by={};
+  items.forEach(i=>{ const c=i.is_watchout?'Watch-outs':(i.category||'Other'); (by[c]=by[c]||[]).push(i); });
+  return by;
+}
+
+function render(d){
+  const items = (d.items||[]);
+  const watch = items.filter(i=>i.is_watchout);
+  const s = document.getElementById('summary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Project</div>
+      <div class="pv">${esc(d.project||document.getElementById('proj').value||'Untitled bid')}</div>
+    </div>
+    <div class="stat due"><div class="n">${esc(d.bid_due||'not stated')}</div><div class="l">Bid due</div></div>
+    <div class="stat"><div class="n">${items.length}</div><div class="l">Requirements</div></div>
+    <div class="stat warn"><div class="n">${watch.length}</div><div class="l">Watch-outs</div></div>`;
+
+  const byCat = groupByCat(items);
+  const g = document.getElementById('groups');
+  g.innerHTML='';
+  ORDER.forEach(cat=>{
+    if(!byCat[cat]) return;
+    const isWatch = cat==="Watch-outs";
+    const sec = document.createElement('div');
+    sec.className='grp'+(isWatch?' watch':'');
+    sec.innerHTML = `<div class="grp-h"><span class="t">${cat}</span><span class="c">${byCat[cat].length}</span></div>`;
+    byCat[cat].forEach(it=>sec.appendChild(itemEl(it)));
+    g.appendChild(sec);
+  });
+  document.getElementById('results').style.display='block';
+  document.getElementById('msg').innerHTML='';
+  document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function itemEl(it){
+  const wrap = document.createElement('div');
+  wrap.className='item';
+  const cb = document.createElement('input');
+  cb.type='checkbox';
+  cb.onchange=()=>wrap.classList.toggle('done',cb.checked);
+  const body = document.createElement('div');
+  body.className='body';
+  const hasLoc = it.source && !/^\s*$/.test(it.source) && !/unknown|not (found|located|specified)/i.test(it.source);
+  let meta = `<span class="stamp${hasLoc?'':' nopage'}"></span>`;
+  const wrapMeta = document.createElement('div');
+  body.innerHTML =
+    `<div class="req"></div>`+
+    (it.detail?`<div class="det"></div>`:``)+
+    `<div class="meta">${meta}</div>`+
+    (it.confidence==='low'&&it.note?`<div class="note-inline"></div>`:``);
+  body.querySelector('.stamp').textContent = it.source||'location not found';
+  const metaEl = body.querySelector('.meta');
+  if(it.is_watchout){ const f=document.createElement('span'); f.className='flag watch'; f.textContent='watch-out'; metaEl.appendChild(f); }
+  if(it.confidence==='low'){ const f=document.createElement('span'); f.className='flag verify'; f.textContent='verify'; metaEl.appendChild(f); }
+  body.querySelector('.req').textContent = it.requirement||'(unlabeled requirement)';
+  if(it.detail) body.querySelector('.det').textContent = it.detail;
+  if(it.confidence==='low'&&it.note) body.querySelector('.note-inline').textContent = "Why flagged: "+it.note;
+  wrap.appendChild(cb);
+  wrap.appendChild(body);
+  return wrap;
+}
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function fname(d,ext){
+  const base=(d.project||document.getElementById('proj').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
+  return base+'-bid-requirements.'+ext;
+}
+function orderedRows(d){
+  const byCat=groupByCat(d.items||[]);
+  const order=['Watch-outs',...ORDER.filter(x=>x!=='Watch-outs')];
+  const rows=[];
+  order.forEach(cat=>{ (byCat[cat]||[]).forEach(i=>rows.push({cat,i})); });
+  return rows;
+}
+function flash(btn){ if(!btn)return; const o=btn.textContent; btn.textContent='Done ✓'; setTimeout(()=>btn.textContent=o,1500); }
+
+function downloadExcel(btn){
+  if(!lastData) return;
+  if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
+  const d=lastData;
+  const rows=[
+    [(d.project||'Bid')+' Bid Submission Requirements'],
+    ['Bid due', d.bid_due||''],
+    ['Submit to', d.submit_to||''],
+    [],
+    ['Done','Category','Requirement','Detail','Source','Watch-out','Confidence']
+  ];
+  orderedRows(d).forEach(({cat,i})=>{
+    rows.push(['', cat, i.requirement||'', i.detail||'', i.source||'', i.is_watchout?'YES':'', (i.confidence||'').toUpperCase()]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:6},{wch:22},{wch:46},{wch:40},{wch:22},{wch:10},{wch:12}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Bid Requirements');
+  XLSX.writeFile(wb, fname(d,'xlsx'));
+  flash(btn);
+}
+
+function downloadPDF(btn){
+  if(!lastData) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showErr("The PDF library did not load. Check the connection and reload the page.");
+  const d=lastData;
+  const { jsPDF }=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'letter'});
+  const M=40; let y=50;
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+  doc.text((d.project||'Bid')+'  Bid Submission Requirements', M, y); y+=20;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+  if(d.bid_due){ doc.text('Bid due: '+d.bid_due, M, y); y+=14; }
+  if(d.submit_to){ doc.text('Submit to: '+String(d.submit_to).slice(0,120), M, y); y+=14; }
+  y+=6;
+  const rows=orderedRows(d);
+  const body=rows.map(({cat,i})=>{
+    const flags=[i.is_watchout?'WATCH-OUT':'', i.confidence==='low'?'VERIFY':''].filter(Boolean).join('\n');
+    return [cat, (i.requirement||'')+(i.detail?('\n'+i.detail):''), i.source||'loc?', flags];
+  });
+  doc.autoTable({
+    startY:y,
+    head:[['Category','Requirement','Source','Flags']],
+    body,
+    styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5 },
+    headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+    alternateRowStyles:{ fillColor:[247,249,251] },
+    columnStyles:{ 0:{cellWidth:92}, 1:{cellWidth:'auto'}, 2:{cellWidth:104,font:'courier',fontSize:8}, 3:{cellWidth:66,fontSize:7,fontStyle:'bold'} },
+    didParseCell:function(hook){
+      if(hook.section!=='body') return;
+      const r=rows[hook.row.index];
+      if(r && r.i.is_watchout){ hook.cell.styles.fillColor=[251,236,228]; }
+    },
+    margin:{left:M,right:M}
+  });
+  doc.save(fname(d,'pdf'));
+  flash(btn);
+}
+
+function copyText(btn){
+  if(!lastData) return;
+  const d = lastData;
+  let out = (d.project? d.project+'\n':'') + 'BID SUBMISSION REQUIREMENTS\n';
+  if(d.bid_due) out += 'Bid due: '+d.bid_due+'\n';
+  if(d.submit_to) out += 'Submit to: '+d.submit_to+'\n';
+  out += '\n';
+  let cur=null;
+  orderedRows(d).forEach(({cat,i})=>{
+    if(cat!==cur){ out+=cat.toUpperCase()+'\n'; cur=cat; }
+    out += '  [ ] '+(i.requirement||'')+(i.detail?': '+i.detail:'')+'  ('+(i.source||'loc?')+')'+(i.confidence==='low'?' [VERIFY]':'')+'\n';
+  });
+  navigator.clipboard.writeText(out).then(()=>flash(btn));
+}
+</script>
+</body>
+</html>
