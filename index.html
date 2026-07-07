@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
   :root{
     --paper:#F5F7F9;
@@ -137,6 +138,26 @@
   .stat.warn .n{color:#FFB38A}
   .stat.due .n{font-size:16px;font-family:var(--body);font-weight:600}
 
+  .scorebar{
+    display:none;align-items:stretch;gap:0;margin:0 0 20px;border-left:5px solid var(--muted);
+    background:var(--card);border-radius:6px;overflow:hidden;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  }
+  .scorebar .band{
+    color:#fff;font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.04em;
+    padding:16px 20px;display:flex;flex-direction:column;justify-content:center;min-width:150px;
+  }
+  .scorebar .bandsub{font-family:var(--body);font-weight:500;font-size:11.5px;opacity:.9;letter-spacing:0;margin-top:4px}
+  .scoregrid{display:flex;flex:1;flex-wrap:wrap}
+  .scorechip{flex:1;min-width:100px;padding:14px 16px;border-left:1px solid var(--line);text-align:center}
+  .scorechip:first-child{border-left:none}
+  .sc-n{font-family:var(--display);font-weight:700;font-size:22px}
+  .sc-n .sc-max{font-family:var(--body);font-weight:500;font-size:12px;color:var(--muted)}
+  .sc-l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+  .topicchip{
+    font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--navy);background:#EEF2F6;
+    border:1px solid var(--line-strong);border-radius:3px;padding:2px 7px;letter-spacing:.02em;
+  }
+
   .grp{margin-bottom:22px}
   .grp-h{
     display:flex;align-items:center;gap:10px;margin:0 0 10px;padding-bottom:7px;
@@ -196,10 +217,10 @@
   <div class="top-inner">
     <div class="brandline">
       <span class="brandmark">MODONIX</span>
-      <span class="brand-tag">Estimating tools · v1</span>
+      <span class="brand-tag">Estimating tools · v2</span>
     </div>
     <h1>Bid Requirements Reader</h1>
-    <p class="sub">Reads the <b>front end</b> of a bid and lists what you have to submit, by when, and what gets you disqualified. Every item is stamped with <b>where it came from</b>, so you verify by looking at the spec instead of trusting your memory.</p>
+    <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
   </div>
 </header>
 
@@ -214,7 +235,11 @@
       </div>
       <div class="modelchip" id="modelchip">model: loading…</div>
     </div>
-    <p class="hint">Your key stays in this browser tab only. It is never saved or sent anywhere except Anthropic. Paste it each session.</p>
+    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="rememberKey" style="width:15px;height:15px;margin:0;cursor:pointer">
+      Remember this key on this device (skips re-pasting it every visit)
+    </label>
+    <p class="hint">Off by default: the key stays in this tab only and clears when you close it. Checking the box saves it in this browser's local storage instead, so it survives reloads, on this device only, never sent anywhere but Anthropic. Only check it on a computer only you use.</p>
   </div>
 
   <div class="card">
@@ -236,7 +261,25 @@
       </div>
       <input type="file" id="file" accept="application/pdf" multiple style="display:none">
       <div class="filelist" id="filelist"></div>
-      <p class="hint">Upload the <b>front-end sections</b>, not the whole 400-page manual. That keeps it fast and accurate. Drawings and their keynotes come in the next version.</p>
+      <div class="note" style="display:none;background:#E7F0F8;border:1px solid #CBDDEE;color:#16304B" id="sizewarn">
+        <b>Large file detected.</b> This tool now splits big PDFs into small page batches automatically before sending, so this will just take longer, not fail. No action needed.
+      </div>
+      <div class="field" style="margin:14px 0 0">
+        <label class="fld" for="pagesPerBatch">Pages per batch</label>
+        <input type="text" id="pagesPerBatch" value="5" style="max-width:80px">
+        <p class="hint">Each PDF is split into chunks of this many pages, read one chunk at a time, and the findings are locked in and combined at the end. Smaller batches are slower but safer against rate limits; 5 is a good default for dense scanned specs.</p>
+      </div>
+      <div class="field">
+        <label class="fld" for="testCap">Test run</label>
+        <select id="testCap" style="max-width:220px">
+          <option value="0">Full document</option>
+          <option value="15">Just test — first 15 pages</option>
+          <option value="20">Just test — first 20 pages</option>
+          <option value="50">Just test — first 50 pages</option>
+        </select>
+        <p class="hint">Pick a page count to preview the output fast on a slice of the document before committing to a full run on the whole thing. Stops once that many pages have been processed, across your uploaded files in order. The result is clearly labeled as a partial test, not a complete checklist.</p>
+      </div>
+      <p class="hint">Upload the <b>front-end sections</b>: Instructions to Bidders, Bid Form, Division 00 (including the Agreement/AIA form and General/Supplementary Conditions), Division 01, and addenda. Leaving out the Agreement and Conditions sections is the most common way insurance, bonding, and liquidated-damages items get missed. Drawings and their keynotes come in a later version. Upload one merged PDF or several separate files, either works, the tool now batches automatically either way.</p>
     </div>
 
     <div id="mode-text" style="display:none">
@@ -256,6 +299,7 @@
 
   <div id="results">
     <div class="summary" id="summary"></div>
+    <div class="scorebar" id="scorebar"></div>
     <div id="groups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
@@ -267,20 +311,50 @@
 </div>
 
 <footer>
-  <p><b>How to read this:</b> every requirement carries a source stamp (§) pointing to the spec section or page it came from. A <b>?</b> stamp means the tool could not pin the exact location, so check that one yourself. A <b>VERIFY</b> flag means the tool was not fully sure the requirement applies. The tool prepares and points. You approve.</p>
-  <p style="margin-top:8px">Built to be calibrated: run it on a bid you already closed, compare against what you know was required, and the gaps show exactly what to tune. Modonix, v1, specs only.</p>
+  <p><b>How to read this:</b> every requirement carries a source stamp (§) pointing to the spec section or page it came from. A <b>?</b> stamp means the tool could not pin the exact location, so check that one yourself. A <b>VERIFY</b> flag means the tool was not fully sure the requirement applies. The GREEN/YELLOW/RED read and the four risk scores are an advisory flag, not a verdict, confirm before pricing. The tool prepares and points. You approve.</p>
+  <p style="margin-top:8px">Built to be calibrated: run it on a bid you already closed, compare against what you know was required, and the gaps show exactly what to tune. For this to catch insurance, bonding, and contract risk correctly, make sure the Agreement and General/Supplementary Conditions sections are included in what you upload, not just the Bid Form and Instructions to Bidders. Modonix, v2, specs only, drawings still deferred to a later version.</p>
 </footer>
 
 <script>
 const MODEL = "claude-sonnet-4-6";       // set to the model your account uses
-const MAX_TOKENS = 8000;
+const MAX_TOKENS = 12000;
 document.getElementById('modelchip').textContent = "model: " + MODEL;
 
 let mode = 'pdf';
 let files = []; // {name, size, b64}
 let lastData = null;
 
-const ORDER = ["Watch-outs","Submission logistics","Bid security","Required forms & attachments","Addenda","Pricing structure","Pre-bid & site visit","Post-award","Other"];
+const ORDER = ["Human Review Items","Risk Flags","Pricing Impacts","Submission Checklist"];
+const WATCH_BUCKETS = new Set(["Human Review Items","Risk Flags"]);
+
+// Remember-key: opt-in local storage so the key survives reloads on this device.
+(function initRememberedKey(){
+  try{
+    const saved = localStorage.getItem('modonix_bid_reader_key');
+    if(saved){
+      document.getElementById('key').value = saved;
+      document.getElementById('rememberKey').checked = true;
+    }
+  }catch(e){ /* localStorage unavailable, ignore */ }
+})();
+document.getElementById('rememberKey').addEventListener('change', function(){
+  try{
+    if(this.checked){
+      localStorage.setItem('modonix_bid_reader_key', document.getElementById('key').value.trim());
+    } else {
+      localStorage.removeItem('modonix_bid_reader_key');
+    }
+  }catch(e){ /* ignore */ }
+});
+document.getElementById('key').addEventListener('input', function(){
+  try{
+    if(document.getElementById('rememberKey').checked){
+      localStorage.setItem('modonix_bid_reader_key', this.value.trim());
+    }
+  }catch(e){ /* ignore */ }
+});
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 function setMode(m){
   mode = m;
@@ -303,18 +377,47 @@ function addFiles(list){
     if(f.type!=='application/pdf'){return}
     const reader = new FileReader();
     reader.onload = ()=>{
-      const b64 = reader.result.split(',')[1];
-      files.push({name:f.name, size:f.size, b64});
+      files.push({name:f.name, size:f.size, buf: reader.result});
       renderFiles();
     };
-    reader.readAsDataURL(f);
+    reader.readAsArrayBuffer(f);
   });
+}
+
+function arrayBufferToBase64(bytes){
+  let binary = '';
+  const chunkSize = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunkSize){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function splitIntoBatches(fileBuf, pagesPerBatch){
+  const { PDFDocument } = PDFLib;
+  const srcDoc = await PDFDocument.load(fileBuf.slice(0), {ignoreEncryption:true});
+  const totalPages = srcDoc.getPageCount();
+  const step = Math.max(1, pagesPerBatch|0);
+  const batches = [];
+  for(let start=0; start<totalPages; start+=step){
+    const end = Math.min(start+step, totalPages);
+    const indices = [];
+    for(let p=start;p<end;p++) indices.push(p);
+    const newDoc = await PDFDocument.create();
+    const copied = await newDoc.copyPages(srcDoc, indices);
+    copied.forEach(pg=>newDoc.addPage(pg));
+    const bytes = await newDoc.save();
+    batches.push({ b64: arrayBufferToBase64(bytes), startPage:start+1, endPage:end, totalPages });
+  }
+  return batches.length ? batches : [{ b64: arrayBufferToBase64(await srcDoc.save()), startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
 }
 function renderFiles(){
   const el = document.getElementById('filelist');
   el.innerHTML = '';
+  let bigFile = false;
   files.forEach((f,i)=>{
     const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+    if(f.size > 4*1048576) bigFile = true;
     const d = document.createElement('div');
     d.className='filepill';
     d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
@@ -322,65 +425,71 @@ function renderFiles(){
     d.querySelector('.x').onclick = ()=>{files.splice(i,1);renderFiles()};
     el.appendChild(d);
   });
+  const warn = document.getElementById('sizewarn');
+  if(warn) warn.style.display = bigFile ? 'block' : 'none';
 }
 
-const SYSTEM = `You are a senior construction estimator and bid coordinator reading the FRONT-END of a bid package for a plumbing/mechanical contractor. Your job is to extract every requirement that governs HOW the bid must be prepared and submitted, not the technical scope of work.
+const SYSTEM = `You are a senior construction estimator reading a bid package for a plumbing/mechanical contractor. Your job is NOT just to list what documents must be submitted. Your job is to find everything that affects: ability to bid, bid price, contract risk, insurance, bonding, schedule, labor, cash flow, compliance, and post-award obligations.
 
-Read the provided documents (Instructions to Bidders, Invitation/Advertisement, Bid Form, Division 00 and Division 01 sections, addenda) and pull out:
+Read every document provided: Instructions to Bidders, Invitation/Advertisement, Bid Form, Division 00 (this includes the Agreement/AIA contract form, General Conditions, and Supplementary Conditions when present), Division 01, and addenda. Do not assume risk items only live in the Instructions to Bidders. Insurance limits are often buried in the Agreement or General Conditions, not the bid instructions. Builder's risk often sits in Supplementary Conditions. Liquidated damages sit in General Conditions. Retainage sits in the owner's agreement. Escalation clauses show up in addenda. Read the whole packet for these, not just the section that seems most likely.
 
-- Submission logistics: bid due date and time, where and how to submit, number of copies, bid validity period.
-- Required forms & attachments: bid form, subcontractor list, non-collusion affidavit, bidder qualification statement, references, MWBE/DBE and EEO forms, Iran/vendor certifications, and any other form that must be submitted. Note if a form must be notarized.
-- Bid security: bid bond or certified check, amount or percentage, and required form.
-- Addenda: each addendum that must be acknowledged.
-- Pricing structure: base bid, alternates, unit prices, allowances, and how they must be entered.
-- Pre-bid & site visit: any pre-bid meeting or site visit, and whether attendance is MANDATORY.
-- Watch-outs / disqualifiers: anything that gets a bid rejected, such as mandatory pre-bid attendance, missing bid bond, unnotarized forms, tight submission windows, unusual insurance or bonding limits, liquidated damages, wage-rate compliance. On public work in New York this includes prevailing wage and certified payroll acknowledgment.
-- Post-award heads-up: performance bond, payment bond, insurance certificates, and submittals due after award, so nothing surprises them later.
+Sort every finding into exactly one of these four buckets:
+
+1. "Submission Checklist": what has to be submitted, by when, in what form. Bid due date/time, submission method, number of copies, bid validity period, required forms and affidavits, notarization, bid bond amount and form, addenda acknowledgment, mandatory pre-bid or site visit attendance.
+
+2. "Pricing Impacts": anything that changes the number the estimator writes down. Required insurance limits above standard, builder's risk requirement, performance/payment bond percentage, certified payroll, DBE/MWBE participation targets, overtime or shift restrictions, prevailing wage, warranty period beyond standard, escalation clauses, allowances, unit price structures.
+
+3. "Risk Flags": anything that threatens disqualification or exposes the company contractually, separate from pure pricing. No-substitutions clauses, 72-hour or similar bid withdrawal restrictions, bid bond defect disqualification language, special licensing requirements, union requirements, mandatory attendance disqualifiers, liquidated damages clauses, schedule penalty clauses, safety program requirements.
+
+4. "Human Review Items": findings the tool is not fully confident about, or findings buried somewhere unexpected (like insurance requirements found inside an AIA contract form rather than the bid instructions), or anything that looks like it might conflict with another part of the document set (such as two different stated bid dates). These always need a human to open the actual page and confirm.
+
+An item can matter for more than one reason, but assign it to the single bucket where a human most needs to see it first.
 
 RULES:
 1. Extract only what is actually in the documents. Do NOT invent or assume requirements. Missing something is recoverable; fabricating a requirement destroys trust.
 2. For EVERY item, cite where you found it: the spec section number and/or page/paragraph. If you cannot pin the location, still include the item but set "source" to your best locator and lower the confidence.
-3. Flag disqualifiers by setting "is_watchout": true.
-4. Set "confidence" to "high", "medium", or "low". Use "low" when you are unsure the requirement applies or cannot locate it. Those are the items a human must verify.
+3. Set "is_watchout": true for anything that could by itself get the bid disqualified or blow the budget if missed. This applies most often to Risk Flags and Human Review items, but can apply anywhere.
+4. Set "confidence" to "high", "medium", or "low". Use "low" when you are unsure the requirement applies, cannot locate it, or found it somewhere unexpected. Low-confidence items belong in Human Review.
 5. Keep "requirement" short and plain. Put amounts, percentages, form numbers, and notarization in "detail".
+6. Set "topic" to a short 1-3 word label for what kind of issue this is, e.g. "Insurance", "Bonding", "Liquidated Damages", "Prevailing Wage", "Retainage", "Escalation", "Schedule Penalty", "Warranty", "Safety", "Certified Payroll", "Submission Logistics", "Forms", "Addenda".
+
+Also produce an overall risk read. Score each 1 to 10, where 10 is highest risk:
+- "submission_risk": how easy is it to get disqualified on paperwork/logistics alone.
+- "pricing_risk": how much unusual cost exposure is buried in this bid (insurance, bonding, labor, warranty, escalation).
+- "contract_risk": how much liability/penalty exposure exists in the contract terms (liquidated damages, schedule penalties, no-substitution clauses).
+- "schedule_risk": how tight or penalized is the schedule.
+These are a flag for a human to weigh, not a verdict. Set "overall" to "GREEN" (routine bid, standard terms), "YELLOW" (some unusual requirements, read before pricing), or "RED" (significant cost or contract exposure, do not price without a full read).
 
 Return ONLY valid JSON, no prose, no markdown fences. Schema:
 {
   "project": "string or null",
   "bid_due": "date and time as stated, or null",
   "submit_to": "where/how to submit, or null",
+  "scores": {
+    "submission_risk": 1,
+    "pricing_risk": 1,
+    "contract_risk": 1,
+    "schedule_risk": 1,
+    "overall": "GREEN | YELLOW | RED"
+  },
   "items": [
     {
-      "category": "Submission logistics | Required forms & attachments | Bid security | Addenda | Pricing structure | Pre-bid & site visit | Post-award | Other",
+      "category": "Submission Checklist | Pricing Impacts | Risk Flags | Human Review Items",
+      "topic": "short label, e.g. Insurance",
       "requirement": "short plain-language requirement",
       "detail": "specifics: amounts, %, form numbers, notarization, or empty string",
-      "source": "spec section and/or page, e.g. Sec 00 21 13 p.7",
+      "source": "spec section and/or page, e.g. Sec 00 21 13 p.7, or AIA A201 §11.1",
       "is_watchout": false,
       "confidence": "high | medium | low",
-      "note": "why uncertain, if confidence is low, else empty string"
+      "note": "why flagged or why uncertain, especially for Human Review items, else empty string"
     }
   ]
 }`;
 
-async function run(){
-  const key = document.getElementById('key').value.trim();
-  document.getElementById('msg').innerHTML='';
-  if(!key){ return showErr("Add your Anthropic API key up top first."); }
-
-  let content = [];
-  if(mode==='pdf'){
-    if(files.length===0){ return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
-    files.forEach(f=>content.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:f.b64}}));
-  } else {
-    const t = document.getElementById('text').value.trim();
-    if(!t){ return showErr("Paste the front-end spec text, or switch to <b>Upload PDF</b>."); }
-    content.push({type:"text",text:"FRONT-END SPEC TEXT:\n\n"+t});
-  }
-  const proj = document.getElementById('proj').value.trim();
-  content.push({type:"text",text:"Extract the bid submission requirements as specified."+(proj?(" Project: "+proj):"")});
-
-  setRunning(true);
-  try{
+async function fetchWithRetry(key, content){
+  const maxAttempts = 4;
+  const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
+  for(let attempt=0; attempt<maxAttempts; attempt++){
     const res = await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{
@@ -391,16 +500,119 @@ async function run(){
       },
       body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:SYSTEM, messages:[{role:"user",content}] })
     });
-    if(!res.ok){
-      const errtxt = await res.text();
-      throw new Error("API "+res.status+": "+errtxt.slice(0,300));
+    if(res.status !== 429 || attempt === maxAttempts-1) return res;
+    const retryAfterHeader = res.headers.get('retry-after');
+    const waitMs = retryAfterHeader ? (parseFloat(retryAfterHeader)*1000) : delays[Math.min(attempt, delays.length-1)];
+    document.getElementById('runhint').textContent =
+      'Rate limited, waiting ' + Math.round(waitMs/1000) + 's and retrying automatically (attempt ' + (attempt+2) + ' of ' + maxAttempts + ')…';
+    await sleep(waitMs);
+  }
+}
+
+function mergeResults(results){
+  const rank = {GREEN:0, YELLOW:1, RED:2};
+  const merged = { project:null, bid_due:null, submit_to:null,
+    scores:{submission_risk:0,pricing_risk:0,contract_risk:0,schedule_risk:0,overall:'GREEN'}, items:[] };
+  const dueDates = new Set();
+  let maxRank = 0;
+  results.forEach(r=>{
+    if(!merged.project && r.project) merged.project = r.project;
+    if(r.bid_due){ dueDates.add(r.bid_due); if(!merged.bid_due) merged.bid_due = r.bid_due; }
+    if(!merged.submit_to && r.submit_to) merged.submit_to = r.submit_to;
+    const sc = r.scores||{};
+    ['submission_risk','pricing_risk','contract_risk','schedule_risk'].forEach(k=>{
+      merged.scores[k] = Math.max(merged.scores[k], Number(sc[k])||0);
+    });
+    const ov = (sc.overall||'GREEN').toUpperCase();
+    if(rank[ov] !== undefined && rank[ov] > maxRank){ maxRank = rank[ov]; merged.scores.overall = ov; }
+    (r.items||[]).forEach(it=>merged.items.push(it));
+  });
+  if(dueDates.size > 1){
+    merged.items.unshift({
+      category:'Human Review Items', topic:'Conflicting Dates',
+      requirement:'Different uploaded documents stated different bid due dates.',
+      detail: Array.from(dueDates).join('  vs  '),
+      source:'multiple documents', is_watchout:true, confidence:'low',
+      note:'Each batch reported a different bid due date. Confirm the correct one manually before relying on this.'
+    });
+  }
+  return merged;
+}
+
+async function run(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('msg').innerHTML='';
+  if(!key){ return showErr("Add your Anthropic API key up top first."); }
+  const proj = document.getElementById('proj').value.trim();
+  const pagesPerBatch = Math.max(1, parseInt(document.getElementById('pagesPerBatch').value,10) || 5);
+  const testCap = parseInt(document.getElementById('testCap').value,10) || 0;
+
+  setRunning(true);
+  try{
+    const results = [];
+    let pagesProcessed = 0;
+    let wasTruncated = false;
+    if(mode==='pdf'){
+      if(files.length===0){ setRunning(false); return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
+      if(typeof PDFLib==='undefined'){ setRunning(false); return showErr("The PDF splitting library did not load. Check your connection and reload the page."); }
+
+      outer:
+      for(let i=0;i<files.length;i++){
+        const f = files[i];
+        let batches;
+        try{
+          batches = await splitIntoBatches(f.buf, pagesPerBatch);
+        }catch(splitErr){
+          throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
+        }
+        for(let b=0;b<batches.length;b++){
+          const batch = batches[b];
+          if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
+          document.getElementById('runhint').textContent =
+            (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
+            'File ' + (i+1) + ' of ' + files.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
+            ', batch ' + (b+1) + ' of ' + batches.length + '…';
+          const content = [
+            {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
+            {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
+              (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
+          ];
+          const res = await fetchWithRetry(key, content);
+          if(!res.ok){
+            const errtxt = await res.text();
+            throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
+          }
+          const data = await res.json();
+          const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
+          const parsed = parseJSON(text);
+          if(!parsed){ throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400)); }
+          results.push(parsed);
+          pagesProcessed += (batch.endPage - batch.startPage + 1);
+          if(testCap && pagesProcessed >= testCap && (i<files.length-1 || b<batches.length-1)) wasTruncated = true;
+        }
+      }
+    } else {
+      const t = document.getElementById('text').value.trim();
+      if(!t){ setRunning(false); return showErr("Paste the front-end spec text, or switch to <b>Upload PDF</b>."); }
+      const content = [
+        {type:"text",text:"FRONT-END SPEC TEXT:\n\n"+t},
+        {type:"text",text:"Extract the bid requirements as specified."+(proj?(" Project: "+proj):"")}
+      ];
+      const res = await fetchWithRetry(key, content);
+      if(!res.ok){
+        const errtxt = await res.text();
+        throw new Error("API "+res.status+": "+errtxt.slice(0,300));
+      }
+      const data = await res.json();
+      const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+      const parsed = parseJSON(text);
+      if(!parsed){ throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,600)); }
+      results.push(parsed);
     }
-    const data = await res.json();
-    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
-    const parsed = parseJSON(text);
-    if(!parsed){ throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,600)); }
-    lastData = parsed;
-    render(parsed);
+    const merged = results.length>1 ? mergeResults(results) : results[0];
+    merged._testRun = wasTruncated ? { cap: testCap, pagesProcessed } : null;
+    lastData = merged;
+    render(merged);
   }catch(e){
     showErr(cleanErr(e.message));
   }finally{
@@ -417,7 +629,13 @@ function parseJSON(t){
 }
 function cleanErr(m){
   if(/401|invalid.*key|authentication/i.test(m)) return "That API key was rejected. Check it and try again.";
-  if(/429|rate/i.test(m)) return "Rate limited by the API. Wait a moment and rerun.";
+  if(/429|rate/i.test(m)){
+    const tooLarge = /exceed|larger than|maximum/i.test(m) && /this request/i.test(m);
+    const lead = tooLarge
+      ? "This single upload needs more tokens than your account allows in one minute. Waiting will NOT fix this, the request itself is too large for your current tier. Upload fewer pages, or raise your tier at console.anthropic.com/settings/limits."
+      : "Rate limited by the API. The tool already retried automatically a few times; if it's still failing, your account's per-minute allowance is being exceeded repeatedly.";
+    return lead + '<br><span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);display:block;margin-top:6px">Raw API detail: ' + esc(m) + '</span>';
+  }
   if(/Failed to fetch|NetworkError/i.test(m)) return "Could not reach the API. Check your connection and that the key is valid.";
   return m;
 }
@@ -433,13 +651,26 @@ function setRunning(on){
 
 function groupByCat(items){
   const by={};
-  items.forEach(i=>{ const c=i.is_watchout?'Watch-outs':(i.category||'Other'); (by[c]=by[c]||[]).push(i); });
+  items.forEach(i=>{ const c=i.category||'Human Review Items'; (by[c]=by[c]||[]).push(i); });
   return by;
 }
 
 function render(d){
   const items = (d.items||[]);
   const watch = items.filter(i=>i.is_watchout);
+  const sc = d.scores||{};
+  const overall = (sc.overall||'').toUpperCase();
+  const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
+
+  const msgEl = document.getElementById('msg');
+  if(d._testRun){
+    msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
+      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page test cap). This is a preview to check formatting and quality, not a full checklist. Switch <b>Test run</b> back to "Full document" and rerun when you're ready for the real pass.
+    </div>`;
+  } else {
+    msgEl.innerHTML='';
+  }
+
   const s = document.getElementById('summary');
   s.innerHTML = `
     <div class="proj">
@@ -447,18 +678,34 @@ function render(d){
       <div class="pv">${esc(d.project||document.getElementById('proj').value||'Untitled bid')}</div>
     </div>
     <div class="stat due"><div class="n">${esc(d.bid_due||'not stated')}</div><div class="l">Bid due</div></div>
-    <div class="stat"><div class="n">${items.length}</div><div class="l">Requirements</div></div>
+    <div class="stat"><div class="n">${items.length}</div><div class="l">Findings</div></div>
     <div class="stat warn"><div class="n">${watch.length}</div><div class="l">Watch-outs</div></div>`;
+
+  const sb = document.getElementById('scorebar');
+  if(overall){
+    sb.style.display='flex';
+    sb.style.borderLeftColor = bandColor;
+    sb.innerHTML = `
+      <div class="band" style="background:${bandColor}">${esc(overall||'?')}<span class="bandsub">Advisory read, not a verdict. Confirm before pricing.</span></div>
+      <div class="scoregrid">
+        ${scoreChip('Submission', sc.submission_risk)}
+        ${scoreChip('Pricing', sc.pricing_risk)}
+        ${scoreChip('Contract', sc.contract_risk)}
+        ${scoreChip('Schedule', sc.schedule_risk)}
+      </div>`;
+  } else {
+    sb.style.display='none';
+  }
 
   const byCat = groupByCat(items);
   const g = document.getElementById('groups');
   g.innerHTML='';
   ORDER.forEach(cat=>{
     if(!byCat[cat]) return;
-    const isWatch = cat==="Watch-outs";
+    const isWatch = WATCH_BUCKETS.has(cat);
     const sec = document.createElement('div');
     sec.className='grp'+(isWatch?' watch':'');
-    sec.innerHTML = `<div class="grp-h"><span class="t">${cat}</span><span class="c">${byCat[cat].length}</span></div>`;
+    sec.innerHTML = `<div class="grp-h"><span class="t">${esc(cat)}</span><span class="c">${byCat[cat].length}</span></div>`;
     byCat[cat].forEach(it=>sec.appendChild(itemEl(it)));
     g.appendChild(sec);
   });
@@ -467,16 +714,23 @@ function render(d){
   document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
+function scoreChip(label,val){
+  const n = Number(val)||0;
+  const color = n>=8 ? '#B4451F' : n>=5 ? '#B8860B' : '#2E7D57';
+  return `<div class="scorechip"><div class="sc-n" style="color:${color}">${n||'?'}<span class="sc-max">/10</span></div><div class="sc-l">${esc(label)}</div></div>`;
+}
+
 function itemEl(it){
   const wrap = document.createElement('div');
-  wrap.className='item';
+  wrap.className='item'+(it.done?' done':'');
   const cb = document.createElement('input');
   cb.type='checkbox';
-  cb.onchange=()=>wrap.classList.toggle('done',cb.checked);
+  cb.checked = !!it.done;
+  cb.onchange=()=>{ it.done = cb.checked; wrap.classList.toggle('done',cb.checked); };
   const body = document.createElement('div');
   body.className='body';
   const hasLoc = it.source && !/^\s*$/.test(it.source) && !/unknown|not (found|located|specified)/i.test(it.source);
-  let meta = `<span class="stamp${hasLoc?'':' nopage'}"></span>`;
+  let meta = `<span class="stamp${hasLoc?'':' nopage'}"></span>`+(it.topic?`<span class="topicchip"></span>`:'');
   const wrapMeta = document.createElement('div');
   body.innerHTML =
     `<div class="req"></div>`+
@@ -484,6 +738,7 @@ function itemEl(it){
     `<div class="meta">${meta}</div>`+
     (it.confidence==='low'&&it.note?`<div class="note-inline"></div>`:``);
   body.querySelector('.stamp').textContent = it.source||'location not found';
+  if(it.topic) body.querySelector('.topicchip').textContent = it.topic;
   const metaEl = body.querySelector('.meta');
   if(it.is_watchout){ const f=document.createElement('span'); f.className='flag watch'; f.textContent='watch-out'; metaEl.appendChild(f); }
   if(it.confidence==='low'){ const f=document.createElement('span'); f.className='flag verify'; f.textContent='verify'; metaEl.appendChild(f); }
@@ -503,7 +758,7 @@ function fname(d,ext){
 }
 function orderedRows(d){
   const byCat=groupByCat(d.items||[]);
-  const order=['Watch-outs',...ORDER.filter(x=>x!=='Watch-outs')];
+  const order=[...ORDER];
   const rows=[];
   order.forEach(cat=>{ (byCat[cat]||[]).forEach(i=>rows.push({cat,i})); });
   return rows;
@@ -513,75 +768,111 @@ function flash(btn){ if(!btn)return; const o=btn.textContent; btn.textContent='D
 function downloadExcel(btn){
   if(!lastData) return;
   if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
-  const d=lastData;
-  const rows=[
-    [(d.project||'Bid')+' Bid Submission Requirements'],
-    ['Bid due', d.bid_due||''],
-    ['Submit to', d.submit_to||''],
-    [],
-    ['Done','Category','Requirement','Detail','Source','Watch-out','Confidence']
-  ];
-  orderedRows(d).forEach(({cat,i})=>{
-    rows.push(['', cat, i.requirement||'', i.detail||'', i.source||'', i.is_watchout?'YES':'', (i.confidence||'').toUpperCase()]);
-  });
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:6},{wch:22},{wch:46},{wch:40},{wch:22},{wch:10},{wch:12}];
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Bid Requirements');
-  XLSX.writeFile(wb, fname(d,'xlsx'));
-  flash(btn);
+  try{
+    const d=lastData;
+    const sc=d.scores||{};
+    const rows=[
+      [(d.project||'Bid')+' Bid Requirements'],
+      ['Bid due', d.bid_due||''],
+      ['Submit to', d.submit_to||''],
+      ['Overall', sc.overall||'', '(advisory read, not a verdict)'],
+      ['Submission risk', sc.submission_risk||'', '/10'],
+      ['Pricing risk', sc.pricing_risk||'', '/10'],
+      ['Contract risk', sc.contract_risk||'', '/10'],
+      ['Schedule risk', sc.schedule_risk||'', '/10'],
+      [],
+      ['Done','Bucket','Topic','Requirement','Detail','Source','Watch-out','Confidence']
+    ];
+    orderedRows(d).forEach(({cat,i})=>{
+      rows.push([i.done?'X':'', cat, i.topic||'', i.requirement||'', i.detail||'', i.source||'', i.is_watchout?'YES':'', (i.confidence||'').toUpperCase()]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:6},{wch:20},{wch:16},{wch:44},{wch:38},{wch:20},{wch:10},{wch:12}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Bid Requirements');
+    XLSX.writeFile(wb, fname(d,'xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("Excel download failed: " + e.message + ". Try <b>Copy as checklist</b> instead, or reload and rerun.");
+  }
 }
 
 function downloadPDF(btn){
   if(!lastData) return;
   if(!window.jspdf||!window.jspdf.jsPDF) return showErr("The PDF library did not load. Check the connection and reload the page.");
   const d=lastData;
-  const { jsPDF }=window.jspdf;
-  const doc=new jsPDF({unit:'pt',format:'letter'});
-  const M=40; let y=50;
-  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
-  doc.text((d.project||'Bid')+'  Bid Submission Requirements', M, y); y+=20;
-  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
-  if(d.bid_due){ doc.text('Bid due: '+d.bid_due, M, y); y+=14; }
-  if(d.submit_to){ doc.text('Submit to: '+String(d.submit_to).slice(0,120), M, y); y+=14; }
-  y+=6;
-  const rows=orderedRows(d);
-  const body=rows.map(({cat,i})=>{
-    const flags=[i.is_watchout?'WATCH-OUT':'', i.confidence==='low'?'VERIFY':''].filter(Boolean).join('\n');
-    return [cat, (i.requirement||'')+(i.detail?('\n'+i.detail):''), i.source||'loc?', flags];
-  });
-  doc.autoTable({
-    startY:y,
-    head:[['Category','Requirement','Source','Flags']],
-    body,
-    styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5 },
-    headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
-    alternateRowStyles:{ fillColor:[247,249,251] },
-    columnStyles:{ 0:{cellWidth:92}, 1:{cellWidth:'auto'}, 2:{cellWidth:104,font:'courier',fontSize:8}, 3:{cellWidth:66,fontSize:7,fontStyle:'bold'} },
-    didParseCell:function(hook){
-      if(hook.section!=='body') return;
-      const r=rows[hook.row.index];
-      if(r && r.i.is_watchout){ hook.cell.styles.fillColor=[251,236,228]; }
-    },
-    margin:{left:M,right:M}
-  });
-  doc.save(fname(d,'pdf'));
-  flash(btn);
+  const rowCount = (d.items||[]).length;
+  if(rowCount > 150){
+    const proceed = confirm(rowCount + ' findings is a lot for a PDF to lay out in the browser and can take a while or make the tab look frozen/blank while it works. Excel or Copy as checklist handle large lists much faster. Continue with PDF anyway?');
+    if(!proceed) return;
+  }
+  try{
+    const sc=d.scores||{};
+    const { jsPDF }=window.jspdf;
+    const doc=new jsPDF({unit:'pt',format:'letter'});
+    const M=40; let y=50;
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+    doc.text((d.project||'Bid')+'  Bid Requirements', M, y); y+=20;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+    if(d.bid_due){ doc.text('Bid due: '+d.bid_due, M, y); y+=14; }
+    if(d.submit_to){ doc.text('Submit to: '+String(d.submit_to).slice(0,120), M, y); y+=14; }
+    if(sc.overall){
+      doc.text('Overall: '+sc.overall+'  (advisory read, confirm before pricing)', M, y); y+=14;
+      doc.text('Submission '+(sc.submission_risk||'?')+'/10   Pricing '+(sc.pricing_risk||'?')+'/10   Contract '+(sc.contract_risk||'?')+'/10   Schedule '+(sc.schedule_risk||'?')+'/10', M, y); y+=14;
+    }
+    y+=6;
+    const rows=orderedRows(d);
+    const body=rows.map(({cat,i})=>{
+      const flags=[i.done?'DONE':'', i.is_watchout?'WATCH-OUT':'', i.confidence==='low'?'VERIFY':''].filter(Boolean).join('\n');
+      return [cat, i.topic||'', (i.requirement||'')+(i.detail?('\n'+i.detail):''), i.source||'loc?', flags];
+    });
+    doc.autoTable({
+      startY:y,
+      head:[['Bucket','Topic','Requirement','Source','Flags']],
+      body,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5 },
+      headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:82}, 1:{cellWidth:64}, 2:{cellWidth:'auto'}, 3:{cellWidth:94,font:'courier',fontSize:8}, 4:{cellWidth:56,fontSize:7,fontStyle:'bold'} },
+      didParseCell:function(hook){
+        if(hook.section!=='body') return;
+        const r=rows[hook.row.index];
+        if(!r) return;
+        if(r.i.done){ hook.cell.styles.fillColor=[232,244,236]; hook.cell.styles.textColor=[110,120,115]; }
+        else if(r.i.is_watchout){ hook.cell.styles.fillColor=[251,236,228]; }
+      },
+      margin:{left:M,right:M}
+    });
+    doc.save(fname(d,'pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy as checklist</b> instead, they handle large lists more reliably.");
+  }
 }
 
 function copyText(btn){
   if(!lastData) return;
-  const d = lastData;
-  let out = (d.project? d.project+'\n':'') + 'BID SUBMISSION REQUIREMENTS\n';
-  if(d.bid_due) out += 'Bid due: '+d.bid_due+'\n';
-  if(d.submit_to) out += 'Submit to: '+d.submit_to+'\n';
-  out += '\n';
-  let cur=null;
-  orderedRows(d).forEach(({cat,i})=>{
-    if(cat!==cur){ out+=cat.toUpperCase()+'\n'; cur=cat; }
-    out += '  [ ] '+(i.requirement||'')+(i.detail?': '+i.detail:'')+'  ('+(i.source||'loc?')+')'+(i.confidence==='low'?' [VERIFY]':'')+'\n';
-  });
-  navigator.clipboard.writeText(out).then(()=>flash(btn));
+  try{
+    const d = lastData;
+    const sc = d.scores||{};
+    let out = (d.project? d.project+'\n':'') + 'BID REQUIREMENTS\n';
+    if(d.bid_due) out += 'Bid due: '+d.bid_due+'\n';
+    if(d.submit_to) out += 'Submit to: '+d.submit_to+'\n';
+    if(sc.overall) out += 'Overall: '+sc.overall+' (advisory, confirm before pricing)\n' +
+      'Submission '+(sc.submission_risk||'?')+'/10  Pricing '+(sc.pricing_risk||'?')+'/10  Contract '+(sc.contract_risk||'?')+'/10  Schedule '+(sc.schedule_risk||'?')+'/10\n';
+    out += '\n';
+    let cur=null;
+    orderedRows(d).forEach(({cat,i})=>{
+      if(cat!==cur){ out+=cat.toUpperCase()+'\n'; cur=cat; }
+      out += '  ['+(i.done?'x':' ')+'] '+(i.topic?'['+i.topic+'] ':'')+(i.requirement||'')+(i.detail?': '+i.detail:'')+'  ('+(i.source||'loc?')+')'+(i.confidence==='low'?' [VERIFY]':'')+'\n';
+    });
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showErr("Copy failed: "+e.message+". Your browser may be blocking clipboard access on this page."));
+  }catch(e){
+    console.error(e);
+    showErr("Copy failed: " + e.message);
+  }
 }
 </script>
 </body>
