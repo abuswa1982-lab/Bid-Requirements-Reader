@@ -273,11 +273,13 @@
         <label class="fld" for="testCap">Test run</label>
         <select id="testCap" style="max-width:220px">
           <option value="0">Full document</option>
+          <option value="5" selected>Just test — first 5 pages (quickest)</option>
+          <option value="10">Just test — first 10 pages</option>
           <option value="15">Just test — first 15 pages</option>
           <option value="20">Just test — first 20 pages</option>
           <option value="50">Just test — first 50 pages</option>
         </select>
-        <p class="hint">Pick a page count to preview the output fast on a slice of the document before committing to a full run on the whole thing. Stops once that many pages have been processed, across your uploaded files in order. The result is clearly labeled as a partial test, not a complete checklist.</p>
+        <p class="hint">Pick a page count to preview the output fast on a slice of the document before committing to a full run on the whole thing. Stops once that many pages have been processed, across your uploaded files in order. The result is clearly labeled as a partial test, not a complete checklist. Defaults to 5 pages, the fastest way to check formatting works before running the whole thing.</p>
       </div>
       <p class="hint">Upload the <b>front-end sections</b>: Instructions to Bidders, Bid Form, Division 00 (including the Agreement/AIA form and General/Supplementary Conditions), Division 01, and addenda. Leaving out the Agreement and Conditions sections is the most common way insurance, bonding, and liquidated-damages items get missed. Drawings and their keynotes come in a later version. Upload one merged PDF or several separate files, either works, the tool now batches automatically either way.</p>
     </div>
@@ -568,10 +570,12 @@ async function run(){
         for(let b=0;b<batches.length;b++){
           const batch = batches[b];
           if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
+          const displayTotalPages = testCap ? Math.min(testCap, batch.totalPages) : batch.totalPages;
+          const displayTotalBatches = testCap ? Math.min(batches.length, Math.ceil(testCap / pagesPerBatch)) : batches.length;
           document.getElementById('runhint').textContent =
             (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
-            'File ' + (i+1) + ' of ' + files.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
-            ', batch ' + (b+1) + ' of ' + batches.length + '…';
+            'File ' + (i+1) + ' of ' + files.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
+            ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
           const content = [
             {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
             {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
