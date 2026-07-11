@@ -214,13 +214,16 @@
 <body>
 
 <header class="top">
-  <div class="top-inner">
-    <div class="brandline">
-      <span class="brandmark">MODONIX</span>
-      <span class="brand-tag">Estimating tools · v2</span>
+  <div class="top-inner" style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px">
+    <div>
+      <div class="brandline">
+        <span class="brandmark">MODONIX</span>
+        <span class="brand-tag">Estimating tools · v2</span>
+      </div>
+      <h1>Bid Requirements Reader</h1>
+      <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
     </div>
-    <h1>Bid Requirements Reader</h1>
-    <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
+    <button class="btn2" style="white-space:nowrap;margin-top:2px" onclick="clearProject(this)" title="Clears the uploaded bid and both results. Your API key and Master Checklist reference stay put.">Clear Project</button>
   </div>
 </header>
 
@@ -290,6 +293,30 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Master Checklist (reference, for step 2)</h2>
+    <p class="hint" style="margin:0 0 10px">Set this up once. It doesn't do anything on its own, it just sits here ready. After Step 1 finishes below, a "Check Against Master List" button appears that reads this and compares it against the checklist, flagging anything missing, in one step.</p>
+    <div class="toggle">
+      <button id="master-tab-pdf" class="on" onclick="setMasterMode('pdf')" type="button">Upload PDF</button>
+      <button id="master-tab-text" onclick="setMasterMode('text')" type="button">Paste text</button>
+    </div>
+    <div id="master-mode-pdf">
+      <div class="drop" id="masterDrop">
+        <div class="big">Drop the Master Checklist PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="masterFile" accept="application/pdf" style="display:none">
+      <div class="filelist" id="masterFilelist"></div>
+    </div>
+    <div id="master-mode-text" style="display:none">
+      <textarea id="masterChecklist" placeholder="Paste your Master Checklist reference text here, once. It stays saved on this device if you check the box below." style="min-height:110px"></textarea>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="rememberMaster" style="width:15px;height:15px;margin:0;cursor:pointer">
+      Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
+    </label>
+  </div>
+
   <div class="runbar" style="margin-bottom:24px">
     <button class="run" id="run" onclick="run()">
       <span class="spin" id="spin"></span><span id="runlabel">Read the documents</span>
@@ -307,6 +334,17 @@
       <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
       <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
+      <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Master List</button>
+    </div>
+    <div id="masterMsg"></div>
+    <div id="masterCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+      <div class="summary" id="masterCheckSummary"></div>
+      <div id="masterCheckGroups"></div>
+      <div class="resbar">
+        <button class="btn2 primary" onclick="downloadMasterCheckPDF(this)">Download PDF</button>
+        <button class="btn2 primary" onclick="downloadMasterCheckExcel(this)">Download Excel</button>
+        <button class="btn2" onclick="copyMasterCheckText(this)">Copy gap report</button>
+      </div>
     </div>
   </div>
 
@@ -356,6 +394,33 @@ document.getElementById('key').addEventListener('input', function(){
   }catch(e){ /* ignore */ }
 });
 
+// Remember-master: same opt-in pattern, since the master checklist is a standing reference, not per-bid.
+(function initRememberedMaster(){
+  try{
+    const saved = localStorage.getItem('modonix_master_checklist');
+    if(saved){
+      document.getElementById('masterChecklist').value = saved;
+      document.getElementById('rememberMaster').checked = true;
+    }
+  }catch(e){ /* ignore */ }
+})();
+document.getElementById('rememberMaster').addEventListener('change', function(){
+  try{
+    if(this.checked){
+      localStorage.setItem('modonix_master_checklist', document.getElementById('masterChecklist').value);
+    } else {
+      localStorage.removeItem('modonix_master_checklist');
+    }
+  }catch(e){ /* ignore */ }
+});
+document.getElementById('masterChecklist').addEventListener('input', function(){
+  try{
+    if(document.getElementById('rememberMaster').checked){
+      localStorage.setItem('modonix_master_checklist', this.value);
+    }
+  }catch(e){ /* ignore */ }
+});
+
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 function setMode(m){
@@ -384,6 +449,49 @@ function addFiles(list){
     };
     reader.readAsArrayBuffer(f);
   });
+}
+
+let masterMode = 'pdf';
+let masterFile = null; // {name, size, buf}
+
+function setMasterMode(m){
+  masterMode = m;
+  document.getElementById('master-mode-pdf').style.display = m==='pdf'?'block':'none';
+  document.getElementById('master-mode-text').style.display = m==='text'?'block':'none';
+  document.getElementById('master-tab-pdf').classList.toggle('on', m==='pdf');
+  document.getElementById('master-tab-text').classList.toggle('on', m==='text');
+}
+
+const masterDrop = document.getElementById('masterDrop');
+const masterFileInput = document.getElementById('masterFile');
+masterDrop.addEventListener('click', ()=>masterFileInput.click());
+masterDrop.addEventListener('dragover', e=>{e.preventDefault();masterDrop.classList.add('over')});
+masterDrop.addEventListener('dragleave', ()=>masterDrop.classList.remove('over'));
+masterDrop.addEventListener('drop', e=>{e.preventDefault();masterDrop.classList.remove('over');addMasterFile(e.dataTransfer.files)});
+masterFileInput.addEventListener('change', e=>addMasterFile(e.target.files));
+
+function addMasterFile(list){
+  const f = [...list].find(f=>f.type==='application/pdf');
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    masterFile = {name:f.name, size:f.size, buf: reader.result};
+    renderMasterFile();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function renderMasterFile(){
+  const el = document.getElementById('masterFilelist');
+  el.innerHTML = '';
+  if(!masterFile) return;
+  const kb = masterFile.size>1048576 ? (masterFile.size/1048576).toFixed(1)+' MB' : Math.round(masterFile.size/1024)+' KB';
+  const d = document.createElement('div');
+  d.className='filepill';
+  d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+  d.querySelector('.nm').textContent = masterFile.name;
+  d.querySelector('.x').onclick = ()=>{masterFile=null;renderMasterFile()};
+  el.appendChild(d);
 }
 
 function arrayBufferToBase64(bytes){
@@ -488,7 +596,37 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
   ]
 }`;
 
-async function fetchWithRetry(key, content){
+const SYSTEM_MASTERCHECK = `You are checking one specific bid's already-extracted findings against a company's Master Checklist, a standing reference of everything that could ever be required across any bid this company might pursue.
+
+You will be given two things:
+1. MASTER CHECKLIST: the full reference template, covering every category and form that could ever apply.
+2. BID FINDINGS: the structured checklist already produced by actually reading this specific bid's documents.
+
+Your job: for EVERY distinct requirement or category named in the Master Checklist, decide one of three things:
+- "Covered": this requirement is already addressed somewhere in the Bid Findings. Say which finding covers it.
+- "Not Applicable": this clearly does not apply to this particular bid or project type. Give a short, specific reason, not a guess.
+- "Missing": this Master Checklist item is not addressed anywhere in the Bid Findings, and cannot be confidently ruled out as inapplicable. This is a real gap a human needs to check by hand.
+
+RULES:
+1. Base "Covered" only on what is actually present in the Bid Findings. Do not assume something is covered just because it seems typical or likely.
+2. When genuinely unsure, default to "Missing" over "Not Applicable". Missing is the safe failure mode, a human just double-checks something that was actually fine. Wrongly marking something "Not Applicable" when it truly applies is the dangerous failure mode, it can get skipped entirely.
+3. Keep every entry short, specific, and plain. No em dashes.
+4. Do not invent Master Checklist items that were not actually in the text provided.
+
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "summary": "one or two plain sentences on how complete these bid findings are against the master list",
+  "coverage": [
+    {
+      "master_item": "short name of the master-checklist requirement or category",
+      "status": "Covered | Not Applicable | Missing",
+      "note": "which bid-finding covers it, or the specific reason it does not apply, or what exactly is missing"
+    }
+  ]
+}`;
+
+async function fetchWithRetry(key, content, systemPrompt){
+  if(systemPrompt === undefined) systemPrompt = SYSTEM;
   const maxAttempts = 4;
   const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
   for(let attempt=0; attempt<maxAttempts; attempt++){
@@ -500,7 +638,7 @@ async function fetchWithRetry(key, content){
         "anthropic-version":"2023-06-01",
         "anthropic-dangerous-direct-browser-access":"true"
       },
-      body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:SYSTEM, messages:[{role:"user",content}] })
+      body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:systemPrompt, messages:[{role:"user",content}] })
     });
     if(res.status !== 429 || attempt === maxAttempts-1) return res;
     const retryAfterHeader = res.headers.get('retry-after');
@@ -906,6 +1044,233 @@ function copyText(btn){
     console.error(e);
     showErr("Copy failed: " + e.message);
   }
+}
+
+let lastMasterCheck = null;
+
+async function runMasterCheck(btn){
+  if(!lastData){ return; }
+  document.getElementById('masterMsg').innerHTML='';
+
+  const usingPdf = masterMode === 'pdf';
+  const masterText = document.getElementById('masterChecklist').value.trim();
+  if(usingPdf && !masterFile){
+    document.getElementById('masterMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Attach your Master Checklist PDF above first, or switch to <b>Paste text</b>.</div>';
+    return;
+  }
+  if(!usingPdf && !masterText){
+    document.getElementById('masterMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Paste your Master Checklist reference text first, or switch to <b>Upload PDF</b>.</div>';
+    return;
+  }
+  const key = document.getElementById('key').value.trim();
+  if(!key){
+    document.getElementById('masterMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>';
+    return;
+  }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = usingPdf ? 'Reading master checklist PDF…' : 'Checking against master list…';
+
+  try{
+    const findingsSummary = {
+      project: lastData.project,
+      bid_due: lastData.bid_due,
+      items: (lastData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+    };
+    const content = [];
+    if(usingPdf){
+      const b64 = arrayBufferToBase64(new Uint8Array(masterFile.buf));
+      content.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
+      content.push({type:"text", text:"The attached document is the MASTER CHECKLIST, a standing reference. Read the whole thing."});
+    } else {
+      content.push({type:"text", text:"MASTER CHECKLIST:\n\n"+masterText});
+    }
+    content.push({type:"text", text:"BID FINDINGS (already extracted from this specific bid):\n\n"+JSON.stringify(findingsSummary, null, 2)});
+    content.push({type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."});
+
+    btn.textContent = 'Checking against master list…';
+    const res = await fetchWithRetry(key, content, SYSTEM_MASTERCHECK);
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error("API "+res.status+": "+t.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){ throw new Error("Could not read the master-check response. Raw output:\n\n"+text.slice(0,400)); }
+    lastMasterCheck = parsed;
+    renderMasterCheck(parsed);
+  }catch(e){
+    console.error(e);
+    document.getElementById('masterMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+}
+
+function renderMasterCheck(d){
+  const coverage = d.coverage||[];
+  const missing = coverage.filter(i=>i.status==='Missing');
+  const covered = coverage.filter(i=>i.status==='Covered');
+  const na = coverage.filter(i=>i.status==='Not Applicable');
+
+  const s = document.getElementById('masterCheckSummary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Master Checklist Coverage</div>
+      <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
+    </div>
+    <div class="stat"><div class="n">${covered.length}</div><div class="l">Covered</div></div>
+    <div class="stat warn"><div class="n">${missing.length}</div><div class="l">Missing</div></div>
+    <div class="stat"><div class="n">${na.length}</div><div class="l">N/A</div></div>`;
+
+  const groups = document.getElementById('masterCheckGroups');
+  groups.innerHTML = '';
+  [['Missing', missing, true], ['Covered', covered, false], ['Not Applicable', na, false]].forEach(([label, list])=>{
+    if(!list.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'grp' + (label==='Missing' ? ' watch' : '');
+    sec.innerHTML = `<div class="grp-h"><span class="t">${label}</span><span class="c">${list.length}</span></div>`;
+    list.forEach(it=>{
+      const row = document.createElement('div');
+      row.className = 'item';
+      row.innerHTML = `<div class="body"><div class="req"></div><div class="det"></div></div>`;
+      row.querySelector('.req').textContent = it.master_item || '(unlabeled)';
+      row.querySelector('.det').textContent = it.note || '';
+      sec.appendChild(row);
+    });
+    groups.appendChild(sec);
+  });
+
+  document.getElementById('masterCheckResults').style.display = 'block';
+  document.getElementById('masterCheckResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function copyMasterCheckText(btn){
+  if(!lastMasterCheck) return;
+  try{
+    const d = lastMasterCheck;
+    let out = 'MASTER CHECKLIST COVERAGE\n' + (d.summary||'') + '\n\n';
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      const list = (d.coverage||[]).filter(i=>i.status===label);
+      if(!list.length) return;
+      out += label.toUpperCase()+'\n';
+      list.forEach(i=>{ out += '  - '+(i.master_item||'')+(i.note?': '+i.note:'')+'\n'; });
+      out += '\n';
+    });
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showErr("Copy failed: "+e.message));
+  }catch(e){
+    console.error(e);
+    showErr("Copy failed: " + e.message);
+  }
+}
+
+function masterCheckFname(ext){
+  const base=((lastData&&lastData.project)||document.getElementById('proj').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
+  return base+'-master-checklist-coverage.'+ext;
+}
+
+function downloadMasterCheckExcel(btn){
+  if(!lastMasterCheck) return;
+  if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastMasterCheck;
+    const rows = [
+      ['Master Checklist Coverage'],
+      ['Summary', d.summary||''],
+      [],
+      ['Status','Master Item','Note']
+    ];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push([label, i.master_item||'', i.note||'']);
+      });
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Master Checklist Coverage');
+    XLSX.writeFile(wb, masterCheckFname('xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("Excel download failed: " + e.message + ". Try <b>Copy gap report</b> instead.");
+  }
+}
+
+function downloadMasterCheckPDF(btn){
+  if(!lastMasterCheck) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showErr("The PDF library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastMasterCheck;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const maxW=612-2*M; let y=50;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+    doc.text('Master Checklist Coverage', M, y); y+=20;
+    if(d.summary){
+      doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+      const lines = doc.splitTextToSize(d.summary, maxW);
+      lines.forEach(line=>{ doc.text(line, M, y); y+=13; });
+    }
+    y += 8;
+
+    const rows = [];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push({ status:label, item:i.master_item||'', note:i.note||'' });
+      });
+    });
+    const body = rows.map(r => [r.status, r.item, r.note]);
+
+    doc.autoTable({
+      startY: y,
+      head: [['Status','Master Item','Note']],
+      body,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+      headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:80,fontStyle:'bold'}, 1:{cellWidth:150}, 2:{cellWidth:'auto'} },
+      didParseCell:function(hook){
+        if(hook.section!=='body') return;
+        const r = rows[hook.row.index];
+        if(r && r.status==='Missing'){ hook.cell.styles.fillColor=[251,236,228]; }
+      },
+      margin:{left:M,right:M}
+    });
+    doc.save(masterCheckFname('pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy gap report</b> instead.");
+  }
+}
+
+function clearProject(btn){
+  files = [];
+  masterFile = null;
+  lastData = null;
+  lastMasterCheck = null;
+  document.getElementById('proj').value = '';
+  document.getElementById('text').value = '';
+  renderFiles();
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('masterCheckResults').style.display = 'none';
+  document.getElementById('msg').innerHTML = '';
+  document.getElementById('masterMsg').innerHTML = '';
+  document.getElementById('summary').innerHTML = '';
+  document.getElementById('scorebar').innerHTML = '';
+  document.getElementById('groups').innerHTML = '';
+  document.getElementById('masterCheckSummary').innerHTML = '';
+  document.getElementById('masterCheckGroups').innerHTML = '';
+  flash(btn);
 }
 </script>
 </body>
