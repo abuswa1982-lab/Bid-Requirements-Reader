@@ -109,6 +109,23 @@
   }
   .toggle button.on{background:var(--navy);color:#fff}
 
+  .pagetabs{display:flex;gap:8px;margin:0 0 20px;border-bottom:2px solid var(--line)}
+  .pagetabs button{
+    font-family:var(--display);font-weight:600;font-size:14px;padding:11px 6px;border:0;background:transparent;
+    color:var(--muted);cursor:pointer;margin-bottom:-2px;border-bottom:2px solid transparent;
+  }
+  .pagetabs button.on{color:var(--navy);border-bottom-color:var(--navy)}
+  .pagetabs button:hover{color:var(--navy)}
+
+  .statuschip{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:5px;border:1px solid var(--line-strong);font-size:12.5px;font-weight:600;color:var(--muted);background:var(--card)}
+  .statuschip .dot{width:8px;height:8px;border-radius:50%;background:#C7CDD3;flex:none}
+  .statuschip.ready{border-color:#BFDCC9;background:#F1F8F4;color:#215A3B}
+  .statuschip.ready .dot{background:#2E7D57}
+
+  .stopbtn{display:none;font-family:var(--body);font-size:13px;font-weight:600;padding:9px 16px;border-radius:5px;border:1px solid #C0392B;color:#C0392B;background:var(--card);cursor:pointer}
+  .stopbtn:hover{background:#FBECE4}
+  .stopbtn.show{display:inline-block}
+
   .run{
     font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:.01em;
     background:var(--navy);color:#fff;border:0;border-radius:5px;padding:13px 24px;cursor:pointer;
@@ -245,6 +262,14 @@
     <p class="hint">Off by default: the key stays in this tab only and clears when you close it. Checking the box saves it in this browser's local storage instead, so it survives reloads, on this device only, never sent anywhere but Anthropic. Only check it on a computer only you use.</p>
   </div>
 
+  <div class="pagetabs">
+    <button id="ptab-bid" class="on" onclick="setPageTab('bid')" type="button">Bid Documents</button>
+    <button id="ptab-dwg" onclick="setPageTab('dwg')" type="button">Drawings</button>
+    <button id="ptab-kickoff" onclick="setPageTab('kickoff')" type="button">Kickoff Sheet</button>
+  </div>
+
+  <div id="page-bid">
+
   <div class="card">
     <h2>The bid documents</h2>
     <div class="toggle">
@@ -317,10 +342,35 @@
     </label>
   </div>
 
+  <div class="card">
+    <h2>Second Checklist (reference, for step 2)</h2>
+    <p class="hint" style="margin:0 0 10px">A second, independent reference list — your own internal checklist, a client-specific list, whatever it is. Set it up once. After Step 1 finishes below, a "Check Against Checklist 2" button appears that reads this and compares it against the same extracted findings, in one step. The bid documents are never re-read for this, it reuses what Step 1 already found.</p>
+    <div class="toggle">
+      <button id="second-tab-pdf" class="on" onclick="setSecondMode('pdf')" type="button">Upload PDF</button>
+      <button id="second-tab-text" onclick="setSecondMode('text')" type="button">Paste text</button>
+    </div>
+    <div id="second-mode-pdf">
+      <div class="drop" id="secondDrop">
+        <div class="big">Drop the second checklist PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="secondFile" accept="application/pdf" style="display:none">
+      <div class="filelist" id="secondFilelist"></div>
+    </div>
+    <div id="second-mode-text" style="display:none">
+      <textarea id="secondChecklist" placeholder="Paste your second checklist reference text here, once. It stays saved on this device if you check the box below." style="min-height:110px"></textarea>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="rememberSecond" style="width:15px;height:15px;margin:0;cursor:pointer">
+      Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
+    </label>
+  </div>
+
   <div class="runbar" style="margin-bottom:24px">
     <button class="run" id="run" onclick="run()">
       <span class="spin" id="spin"></span><span id="runlabel">Read the documents</span>
     </button>
+    <button class="stopbtn" id="runStop" onclick="stopRun()" type="button">Stop</button>
     <span class="hint" id="runhint" style="margin:0"></span>
   </div>
 
@@ -335,6 +385,9 @@
       <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
       <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Master List</button>
+      <button class="stopbtn" id="masterCheckStop" onclick="stopMasterCheck()" type="button">Stop</button>
+      <button class="btn2" id="secondCheckBtn" onclick="runSecondCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 2</button>
+      <button class="stopbtn" id="secondCheckStop" onclick="stopSecondCheck()" type="button">Stop</button>
     </div>
     <div id="masterMsg"></div>
     <div id="masterCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
@@ -346,23 +399,171 @@
         <button class="btn2" onclick="copyMasterCheckText(this)">Copy gap report</button>
       </div>
     </div>
+    <div id="secondMsg"></div>
+    <div id="secondCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+      <div class="summary" id="secondCheckSummary"></div>
+      <div id="secondCheckGroups"></div>
+      <div class="resbar">
+        <button class="btn2 primary" onclick="downloadSecondCheckPDF(this)">Download PDF</button>
+        <button class="btn2 primary" onclick="downloadSecondCheckExcel(this)">Download Excel</button>
+        <button class="btn2" onclick="copySecondCheckText(this)">Copy gap report</button>
+      </div>
+    </div>
   </div>
+
+  </div><!-- /page-bid -->
+
+  <div id="page-dwg" style="display:none">
+
+  <div class="card">
+    <h2>The drawings</h2>
+    <p class="hint" style="margin:0 0 10px">Upload the drawing set (plans, details, schedules, keynotes). Read separately from the front-end spec above, this pass looks for scope shown on the drawings, items implied but not called out in the spec, and keynote/legend items worth a second look.</p>
+    <div>
+      <label class="fld" for="dwgProj">Project name <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input type="text" id="dwgProj" placeholder="e.g. Lockport WWTP, Mechanical" style="margin-bottom:16px">
+    </div>
+    <div class="drop" id="dwgDrop">
+      <div class="big">Drop the drawing set PDF(s) here</div>
+      <div class="small">or click to choose. Plans, details, schedules. Multiple files OK.</div>
+    </div>
+    <input type="file" id="dwgFile" accept="application/pdf" multiple style="display:none">
+    <div class="filelist" id="dwgFilelist"></div>
+    <div class="note" style="display:none;background:#E7F0F8;border:1px solid #CBDDEE;color:#16304B" id="dwgSizewarn">
+      <b>Large file detected.</b> This tool splits big PDFs into small page batches automatically before sending, so this will just take longer, not fail. No action needed.
+    </div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="dwgPagesPerBatch">Pages per batch</label>
+      <input type="text" id="dwgPagesPerBatch" value="5" style="max-width:80px">
+      <p class="hint">Same idea as the front-end reader: each PDF is split into chunks of this many pages and read one chunk at a time. Drawing sheets are image-heavy, so smaller batches are usually safer here.</p>
+    </div>
+    <div class="field">
+      <label class="fld" for="dwgTestCap">Test run</label>
+      <select id="dwgTestCap" style="max-width:220px">
+        <option value="0">Full document</option>
+        <option value="5" selected>Just test — first 5 pages (quickest)</option>
+        <option value="10">Just test — first 10 pages</option>
+        <option value="15">Just test — first 15 pages</option>
+        <option value="20">Just test — first 20 pages</option>
+        <option value="50">Just test — first 50 pages</option>
+      </select>
+      <p class="hint">Preview on a slice of the drawing set before committing to the full run.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Checklist 3 (reference, for drawing review)</h2>
+    <p class="hint" style="margin:0 0 10px">Your drawing-review checklist. Set it up once. After the drawings are read below, a "Check Against Checklist 3" button appears that compares those findings against this list, in one step. The drawing set is never re-read for this, it reuses what was just found.</p>
+    <div class="toggle">
+      <button id="third-tab-pdf" class="on" onclick="setThirdMode('pdf')" type="button">Upload PDF</button>
+      <button id="third-tab-text" onclick="setThirdMode('text')" type="button">Paste text</button>
+    </div>
+    <div id="third-mode-pdf">
+      <div class="drop" id="thirdDrop">
+        <div class="big">Drop the Checklist 3 PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="thirdFile" accept="application/pdf" style="display:none">
+      <div class="filelist" id="thirdFilelist"></div>
+    </div>
+    <div id="third-mode-text" style="display:none">
+      <textarea id="thirdChecklist" placeholder="Paste the Checklist 3 reference text here, once. It stays saved on this device if you check the box below." style="min-height:110px"></textarea>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="rememberThird" style="width:15px;height:15px;margin:0;cursor:pointer">
+      Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
+    </label>
+  </div>
+
+  <div class="runbar" style="margin-bottom:24px">
+    <button class="run" id="dwgRun" onclick="runDrawings()">
+      <span class="spin" id="dwgSpin"></span><span id="dwgRunLabel">Read the drawings</span>
+    </button>
+    <button class="stopbtn" id="dwgRunStop" onclick="stopDrawings()" type="button">Stop</button>
+    <span class="hint" id="dwgRunHint" style="margin:0"></span>
+  </div>
+
+  <div id="dwgMsg"></div>
+
+  <div id="dwgResults" style="display:none">
+    <div class="summary" id="dwgSummary"></div>
+    <div class="scorebar" id="dwgScorebar"></div>
+    <div id="dwgGroups"></div>
+    <div class="resbar">
+      <button class="btn2 primary" onclick="downloadDwgPDF(this)">Download PDF</button>
+      <button class="btn2 primary" onclick="downloadDwgExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyDwgText(this)">Copy as checklist</button>
+      <button class="btn2" id="thirdCheckBtn" onclick="runThirdCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 3</button>
+      <button class="stopbtn" id="thirdCheckStop" onclick="stopThirdCheck()" type="button">Stop</button>
+    </div>
+  </div>
+
+  <div id="thirdMsg"></div>
+  <div id="thirdCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+    <div class="summary" id="thirdCheckSummary"></div>
+    <div id="thirdCheckGroups"></div>
+    <div class="resbar">
+      <button class="btn2 primary" onclick="downloadThirdCheckPDF(this)">Download PDF</button>
+      <button class="btn2 primary" onclick="downloadThirdCheckExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyThirdCheckText(this)">Copy gap report</button>
+    </div>
+  </div>
+
+  </div><!-- /page-dwg -->
+
+  <div id="page-kickoff" style="display:none">
+
+  <div class="card">
+    <h2>Bid Kickoff Sheet</h2>
+    <p class="hint" style="margin:0 0 10px">This tab doesn't read any documents itself. It reads what the other tabs already found — the spec extraction, Checklist 1, Checklist 2, the drawing extraction, and Checklist 3 — and weighs them together as one project, not five separate lists. It's looking for the things that only show up when you compare documents against each other: a spec requirement the drawings contradict, a drawing flag that changes how risky a "Covered" checklist item really is, that kind of thing.</p>
+    <div id="kickoffStatus" style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px"></div>
+    <p class="hint" id="kickoffStatusHint" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="runbar" style="margin-bottom:24px">
+    <button class="run" id="kickoffRun" onclick="runKickoff()">
+      <span class="spin" id="kickoffSpin"></span><span id="kickoffRunLabel">Generate the kickoff sheet</span>
+    </button>
+    <button class="stopbtn" id="kickoffRunStop" onclick="stopKickoff()" type="button">Stop</button>
+    <span class="hint" id="kickoffRunHint" style="margin:0"></span>
+  </div>
+
+  <div id="kickoffMsg"></div>
+
+  <div id="kickoffResults" style="display:none">
+    <div class="summary" id="kickoffSummary"></div>
+    <div class="scorebar" id="kickoffScorebar"></div>
+    <div id="kickoffBody"></div>
+    <div class="resbar">
+      <button class="btn2 primary" onclick="downloadKickoffPDF(this)">Download PDF</button>
+      <button class="btn2 primary" onclick="downloadKickoffExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyKickoffText(this)">Copy as text</button>
+    </div>
+  </div>
+
+  </div><!-- /page-kickoff -->
 
 </div>
 
 <footer>
   <p><b>How to read this:</b> every requirement carries a source stamp (§) pointing to the spec section or page it came from. A <b>?</b> stamp means the tool could not pin the exact location, so check that one yourself. A <b>VERIFY</b> flag means the tool was not fully sure the requirement applies. The GREEN/YELLOW/RED read and the four risk scores are an advisory flag, not a verdict, confirm before pricing. The tool prepares and points. You approve.</p>
-  <p style="margin-top:8px">Built to be calibrated: run it on a bid you already closed, compare against what you know was required, and the gaps show exactly what to tune. For this to catch insurance, bonding, and contract risk correctly, make sure the Agreement and General/Supplementary Conditions sections are included in what you upload, not just the Bid Form and Instructions to Bidders. Modonix, v2, specs only, drawings still deferred to a later version.</p>
+  <p style="margin-top:8px">Built to be calibrated: run it on a bid you already closed, compare against what you know was required, and the gaps show exactly what to tune. For this to catch insurance, bonding, and contract risk correctly, make sure the Agreement and General/Supplementary Conditions sections are included in what you upload, not just the Bid Form and Instructions to Bidders. Modonix, v2. Drawings get their own tab and their own read, separate from the front-end spec.</p>
 </footer>
 
 <script>
 const MODEL = "claude-sonnet-4-6";       // set to the model your account uses
-const MAX_TOKENS = 12000;
+const MAX_TOKENS = 20000;
 document.getElementById('modelchip').textContent = "model: " + MODEL;
 
 let mode = 'pdf';
 let files = []; // {name, size, b64}
 let lastData = null;
+
+let mainAbort = null;
+let dwgAbort = null;
+let masterCheckAbort = null;
+let secondCheckAbort = null;
+let thirdCheckAbort = null;
+let kickoffAbort = null;
 
 const ORDER = ["Human Review Items","Risk Flags","Pricing Impacts","Submission Checklist"];
 const WATCH_BUCKETS = new Set(["Human Review Items","Risk Flags"]);
@@ -421,7 +622,71 @@ document.getElementById('masterChecklist').addEventListener('input', function(){
   }catch(e){ /* ignore */ }
 });
 
+// Remember-second: same opt-in pattern for the second, independent checklist reference.
+(function initRememberedSecond(){
+  try{
+    const saved = localStorage.getItem('modonix_second_checklist');
+    if(saved){
+      document.getElementById('secondChecklist').value = saved;
+      document.getElementById('rememberSecond').checked = true;
+    }
+  }catch(e){ /* ignore */ }
+})();
+document.getElementById('rememberSecond').addEventListener('change', function(){
+  try{
+    if(this.checked){
+      localStorage.setItem('modonix_second_checklist', document.getElementById('secondChecklist').value);
+    } else {
+      localStorage.removeItem('modonix_second_checklist');
+    }
+  }catch(e){ /* ignore */ }
+});
+document.getElementById('secondChecklist').addEventListener('input', function(){
+  try{
+    if(document.getElementById('rememberSecond').checked){
+      localStorage.setItem('modonix_second_checklist', this.value);
+    }
+  }catch(e){ /* ignore */ }
+});
+
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// Remember-third: opt-in save for the drawing-review reference checklist.
+(function initRememberedThird(){
+  try{
+    const saved = localStorage.getItem('modonix_third_checklist');
+    if(saved){
+      document.getElementById('thirdChecklist').value = saved;
+      document.getElementById('rememberThird').checked = true;
+    }
+  }catch(e){ /* ignore */ }
+})();
+document.getElementById('rememberThird').addEventListener('change', function(){
+  try{
+    if(this.checked){
+      localStorage.setItem('modonix_third_checklist', document.getElementById('thirdChecklist').value);
+    } else {
+      localStorage.removeItem('modonix_third_checklist');
+    }
+  }catch(e){ /* ignore */ }
+});
+document.getElementById('thirdChecklist').addEventListener('input', function(){
+  try{
+    if(document.getElementById('rememberThird').checked){
+      localStorage.setItem('modonix_third_checklist', this.value);
+    }
+  }catch(e){ /* ignore */ }
+});
+
+function setPageTab(p){
+  document.getElementById('page-bid').style.display = p==='bid'?'block':'none';
+  document.getElementById('page-dwg').style.display = p==='dwg'?'block':'none';
+  document.getElementById('page-kickoff').style.display = p==='kickoff'?'block':'none';
+  document.getElementById('ptab-bid').classList.toggle('on', p==='bid');
+  document.getElementById('ptab-dwg').classList.toggle('on', p==='dwg');
+  document.getElementById('ptab-kickoff').classList.toggle('on', p==='kickoff');
+  if(p==='kickoff') renderKickoffStatus();
+}
 
 function setMode(m){
   mode = m;
@@ -437,7 +702,7 @@ drop.addEventListener('click', ()=>fileInput.click());
 drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over')});
 drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
 drop.addEventListener('drop', e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)});
-fileInput.addEventListener('change', e=>addFiles(e.target.files));
+fileInput.addEventListener('change', e=>{addFiles(e.target.files); e.target.value='';});
 
 function addFiles(list){
   [...list].forEach(f=>{
@@ -468,7 +733,7 @@ masterDrop.addEventListener('click', ()=>masterFileInput.click());
 masterDrop.addEventListener('dragover', e=>{e.preventDefault();masterDrop.classList.add('over')});
 masterDrop.addEventListener('dragleave', ()=>masterDrop.classList.remove('over'));
 masterDrop.addEventListener('drop', e=>{e.preventDefault();masterDrop.classList.remove('over');addMasterFile(e.dataTransfer.files)});
-masterFileInput.addEventListener('change', e=>addMasterFile(e.target.files));
+masterFileInput.addEventListener('change', e=>{addMasterFile(e.target.files); e.target.value='';});
 
 function addMasterFile(list){
   const f = [...list].find(f=>f.type==='application/pdf');
@@ -492,6 +757,133 @@ function renderMasterFile(){
   d.querySelector('.nm').textContent = masterFile.name;
   d.querySelector('.x').onclick = ()=>{masterFile=null;renderMasterFile()};
   el.appendChild(d);
+}
+
+let secondMode = 'pdf';
+let secondFile = null; // {name, size, buf}
+
+function setSecondMode(m){
+  secondMode = m;
+  document.getElementById('second-mode-pdf').style.display = m==='pdf'?'block':'none';
+  document.getElementById('second-mode-text').style.display = m==='text'?'block':'none';
+  document.getElementById('second-tab-pdf').classList.toggle('on', m==='pdf');
+  document.getElementById('second-tab-text').classList.toggle('on', m==='text');
+}
+
+const secondDrop = document.getElementById('secondDrop');
+const secondFileInput = document.getElementById('secondFile');
+secondDrop.addEventListener('click', ()=>secondFileInput.click());
+secondDrop.addEventListener('dragover', e=>{e.preventDefault();secondDrop.classList.add('over')});
+secondDrop.addEventListener('dragleave', ()=>secondDrop.classList.remove('over'));
+secondDrop.addEventListener('drop', e=>{e.preventDefault();secondDrop.classList.remove('over');addSecondFile(e.dataTransfer.files)});
+secondFileInput.addEventListener('change', e=>{addSecondFile(e.target.files); e.target.value='';});
+
+function addSecondFile(list){
+  const f = [...list].find(f=>f.type==='application/pdf');
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    secondFile = {name:f.name, size:f.size, buf: reader.result};
+    renderSecondFile();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function renderSecondFile(){
+  const el = document.getElementById('secondFilelist');
+  el.innerHTML = '';
+  if(!secondFile) return;
+  const kb = secondFile.size>1048576 ? (secondFile.size/1048576).toFixed(1)+' MB' : Math.round(secondFile.size/1024)+' KB';
+  const d = document.createElement('div');
+  d.className='filepill';
+  d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+  d.querySelector('.nm').textContent = secondFile.name;
+  d.querySelector('.x').onclick = ()=>{secondFile=null;renderSecondFile()};
+  el.appendChild(d);
+}
+
+let thirdMode = 'pdf';
+let thirdFile = null; // {name, size, buf}
+
+function setThirdMode(m){
+  thirdMode = m;
+  document.getElementById('third-mode-pdf').style.display = m==='pdf'?'block':'none';
+  document.getElementById('third-mode-text').style.display = m==='text'?'block':'none';
+  document.getElementById('third-tab-pdf').classList.toggle('on', m==='pdf');
+  document.getElementById('third-tab-text').classList.toggle('on', m==='text');
+}
+
+const thirdDrop = document.getElementById('thirdDrop');
+const thirdFileInput = document.getElementById('thirdFile');
+thirdDrop.addEventListener('click', ()=>thirdFileInput.click());
+thirdDrop.addEventListener('dragover', e=>{e.preventDefault();thirdDrop.classList.add('over')});
+thirdDrop.addEventListener('dragleave', ()=>thirdDrop.classList.remove('over'));
+thirdDrop.addEventListener('drop', e=>{e.preventDefault();thirdDrop.classList.remove('over');addThirdFile(e.dataTransfer.files)});
+thirdFileInput.addEventListener('change', e=>{addThirdFile(e.target.files); e.target.value='';});
+
+function addThirdFile(list){
+  const f = [...list].find(f=>f.type==='application/pdf');
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    thirdFile = {name:f.name, size:f.size, buf: reader.result};
+    renderThirdFile();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function renderThirdFile(){
+  const el = document.getElementById('thirdFilelist');
+  el.innerHTML = '';
+  if(!thirdFile) return;
+  const kb = thirdFile.size>1048576 ? (thirdFile.size/1048576).toFixed(1)+' MB' : Math.round(thirdFile.size/1024)+' KB';
+  const d = document.createElement('div');
+  d.className='filepill';
+  d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+  d.querySelector('.nm').textContent = thirdFile.name;
+  d.querySelector('.x').onclick = ()=>{thirdFile=null;renderThirdFile()};
+  el.appendChild(d);
+}
+
+const drawingsDrop = document.getElementById('dwgDrop');
+const drawingsFileInput = document.getElementById('dwgFile');
+drawingsDrop.addEventListener('click', ()=>drawingsFileInput.click());
+drawingsDrop.addEventListener('dragover', e=>{e.preventDefault();drawingsDrop.classList.add('over')});
+drawingsDrop.addEventListener('dragleave', ()=>drawingsDrop.classList.remove('over'));
+drawingsDrop.addEventListener('drop', e=>{e.preventDefault();drawingsDrop.classList.remove('over');addDwgFiles(e.dataTransfer.files)});
+drawingsFileInput.addEventListener('change', e=>{addDwgFiles(e.target.files); e.target.value='';});
+
+let dwgFiles = []; // {name, size, buf}
+let lastDwgData = null;
+
+function addDwgFiles(list){
+  [...list].forEach(f=>{
+    if(f.type!=='application/pdf'){return}
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      dwgFiles.push({name:f.name, size:f.size, buf: reader.result});
+      renderDwgFiles();
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+function renderDwgFiles(){
+  const el = document.getElementById('dwgFilelist');
+  el.innerHTML = '';
+  let bigFile = false;
+  dwgFiles.forEach((f,i)=>{
+    const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+    if(f.size > 4*1048576) bigFile = true;
+    const d = document.createElement('div');
+    d.className='filepill';
+    d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+    d.querySelector('.nm').textContent = f.name;
+    d.querySelector('.x').onclick = ()=>{dwgFiles.splice(i,1);renderDwgFiles()};
+    el.appendChild(d);
+  });
+  const warn = document.getElementById('dwgSizewarn');
+  if(warn) warn.style.display = bigFile ? 'block' : 'none';
 }
 
 function arrayBufferToBase64(bytes){
@@ -610,7 +1002,7 @@ Your job: for EVERY distinct requirement or category named in the Master Checkli
 RULES:
 1. Base "Covered" only on what is actually present in the Bid Findings. Do not assume something is covered just because it seems typical or likely.
 2. When genuinely unsure, default to "Missing" over "Not Applicable". Missing is the safe failure mode, a human just double-checks something that was actually fine. Wrongly marking something "Not Applicable" when it truly applies is the dangerous failure mode, it can get skipped entirely.
-3. Keep every entry short, specific, and plain. No em dashes.
+3. Keep every entry short, specific, and plain. No em dashes. The "note" field is a single short sentence, 20 words or fewer, never a paragraph, even for large or detailed checklists. Brevity here matters: a long checklist run against many findings can produce a very long report, and terse notes keep the whole thing from running out of room mid-response.
 4. Do not invent Master Checklist items that were not actually in the text provided.
 
 Return ONLY valid JSON, no prose, no markdown fences. Schema:
@@ -625,13 +1017,111 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
   ]
 }`;
 
-async function fetchWithRetry(key, content, systemPrompt){
+const ORDER_DWG = ["Human Review Items","Hidden Scope Flags","Scope Items","Keynote & Legend Items"];
+const WATCH_BUCKETS_DWG = new Set(["Human Review Items","Hidden Scope Flags"]);
+
+const SYSTEM_DRAWINGS = `You are a senior construction estimator reading a drawing set for a plumbing/mechanical contractor, separately from the front-end spec. Your job is to find scope that the drawings show or imply, that a bid built only from the spec text could easily miss.
+
+Read every sheet provided: plans, details, sections, schedules, keynotes, and legends. Cross-reference keynotes and legend symbols against what actually appears on the plan sheets.
+
+Sort every finding into exactly one of these four buckets:
+
+1. "Scope Items": concrete scope shown on the drawings — equipment, fixtures, piping runs, connections, demolition, and quantities that a takeoff needs to price. Include schedule/quantity call-outs (e.g. fixture schedules, equipment schedules).
+
+2. "Hidden Scope Flags": scope that is shown or implied on the drawings but is easy to miss because it is not called out in the front-end spec, buried in a keynote, shown only on one sheet out of a set, or requires coordination between disciplines (e.g. a mechanical connection shown only on an electrical sheet, or a note referencing another discipline's drawing that wasn't provided). This is the category that matters most: things that would otherwise get missed.
+
+3. "Keynote & Legend Items": specific keynote or legend callouts worth a second look — symbols used inconsistently, keynotes referenced on a sheet but not defined in the legend provided, or notes that reference specs, details, or sheets not included in what was uploaded.
+
+4. "Human Review Items": findings the tool is not fully confident about, illegible or low-resolution areas, conflicting information between sheets (e.g. two sheets showing different quantities for the same fixture), or anything needing a human to open the actual sheet and confirm.
+
+RULES:
+1. Extract only what is actually shown or clearly implied in the drawings provided. Do NOT invent quantities or scope that isn't visible. Missing something is recoverable; fabricating a requirement destroys trust.
+2. For EVERY item, cite where you found it: sheet number and/or detail/keynote reference. If you cannot pin the location, still include the item but set "source" to your best locator and lower the confidence.
+3. Set "is_watchout": true for anything that could meaningfully change scope or price if missed. This applies most often to Hidden Scope Flags, but can apply anywhere.
+4. Set "confidence" to "high", "medium", or "low". Use "low" when the sheet is hard to read, the item is ambiguous, or referenced material wasn't provided.
+5. Keep "requirement" short and plain. Put quantities, sizes, and model/spec numbers in "detail".
+6. Set "topic" to a short 1-3 word label, e.g. "Piping", "Fixtures", "Equipment", "Demolition", "Coordination", "Keynote Mismatch", "Missing Reference".
+
+Also produce an overall read. Score each 1 to 10, where 10 is highest risk:
+- "submission_risk": always 0, not applicable to drawings.
+- "pricing_risk": how much scope/cost exposure is buried in things easy to miss on these drawings.
+- "contract_risk": how much coordination or scope-gap risk exists between disciplines or sheets.
+- "schedule_risk": always 0, not applicable to drawings, unless a phasing/sequencing note on the drawings clearly affects schedule.
+These are a flag for a human to weigh, not a verdict. Set "overall" to "GREEN" (routine drawing set, nothing unusual), "YELLOW" (some scope or coordination items worth a careful look), or "RED" (significant hidden scope or missing-reference risk, do not price without a full manual review).
+
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "project": "string or null",
+  "bid_due": null,
+  "submit_to": null,
+  "scores": {
+    "submission_risk": 0,
+    "pricing_risk": 1,
+    "contract_risk": 1,
+    "schedule_risk": 0,
+    "overall": "GREEN | YELLOW | RED"
+  },
+  "items": [
+    {
+      "category": "Scope Items | Hidden Scope Flags | Keynote & Legend Items | Human Review Items",
+      "topic": "short label, e.g. Piping",
+      "requirement": "short plain-language finding",
+      "detail": "specifics: sizes, quantities, model numbers, or empty string",
+      "source": "sheet number and/or detail/keynote, e.g. Sheet P-201, Keynote 4",
+      "is_watchout": false,
+      "confidence": "high | medium | low",
+      "note": "why flagged or why uncertain, especially for Human Review items, else empty string"
+    }
+  ]
+}`;
+
+const SYSTEM_KICKOFF = `You are a senior construction estimator producing a Bid Kickoff Sheet for a plumbing/mechanical contractor. You are not reading raw documents. You are being handed the outputs of up to five prior AI passes on this same project: the spec extraction, a submission-compliance checklist coverage report, a scope/risk checklist coverage report, a drawing extraction, and a drawing-review checklist coverage report. Some of these may be missing; work with what you're given and say so where something is missing.
+
+Your job is NOT to summarize each input one after another. Your job is to weigh them AGAINST each other as one project and surface what only becomes visible when you compare them:
+- A spec requirement that the drawings contradict or complicate (e.g. spec says one thing, drawings show or imply something heavier, different, or additional).
+- A checklist item marked "Covered" that is actually riskier than it looks once you factor in a drawing-side hidden-scope flag tied to the same topic.
+- A pattern across multiple "Missing" items that adds up to a bigger risk than any single one alone (e.g. several submission items missing that all point to insurance/bonding exposure).
+- Genuine open questions that need a human decision or an RFI before this can be priced or submitted, that don't show up cleanly in any single input alone.
+
+Do not just concatenate the inputs' bullet points. If two inputs say the same thing, merge it into one line. If they conflict, call out the conflict explicitly — that's the most valuable thing this pass can produce.
+
+Produce a bid/no-bid recommendation. Weigh submission risk (can we even get the bid in cleanly and on time), pricing/scope risk, and drawing-side hidden scope/coordination risk together. Justify the verdict in 2-4 plain sentences a project manager could read in ten seconds. Choose "BID", "BID WITH CAUTION", or "DO NOT BID YET".
+
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "project": "string or null",
+  "bid_due": "string or null",
+  "submit_to": "string or null",
+  "inputs_used": ["short labels for which of the five inputs were actually provided, e.g. Spec Extraction, Checklist 1, Checklist 2, Drawing Extraction, Checklist 3"],
+  "recommendation": {
+    "verdict": "BID | BID WITH CAUTION | DO NOT BID YET",
+    "reasoning": "2-4 plain sentences weighing everything together"
+  },
+  "critical_submission_items": [
+    { "item": "short label", "detail": "deadline, format, or requirement", "source": "Checklist 1 | Spec Extraction | etc" }
+  ],
+  "top_risks": [
+    { "topic": "short label", "description": "plain language, merged/deduped across inputs", "source": "which input(s) this came from" }
+  ],
+  "conflicts": [
+    { "description": "the specific contradiction or tension between two inputs, plain language", "sources": "which two+ inputs disagree or interact" }
+  ],
+  "open_items": [
+    { "description": "what needs a human decision or an RFI before pricing/submission", "why": "why this can't be resolved from what's already known" }
+  ],
+  "key_dates": [
+    { "label": "e.g. Bid due, Pre-bid meeting, Addendum deadline", "date": "as found, or 'not found' if genuinely absent from all inputs" }
+  ]
+}`;
+
+async function fetchWithRetry(key, content, systemPrompt, signal){
   if(systemPrompt === undefined) systemPrompt = SYSTEM;
   const maxAttempts = 4;
   const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
   for(let attempt=0; attempt<maxAttempts; attempt++){
     const res = await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
+      signal:signal,
       headers:{
         "content-type":"application/json",
         "x-api-key":key,
@@ -688,10 +1178,12 @@ async function run(){
   const testCap = parseInt(document.getElementById('testCap').value,10) || 0;
 
   setRunning(true);
+  mainAbort = new AbortController();
   try{
     const results = [];
     let pagesProcessed = 0;
     let wasTruncated = false;
+    let wasStopped = false;
     if(mode==='pdf'){
       if(files.length===0){ setRunning(false); return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
       if(typeof PDFLib==='undefined'){ setRunning(false); return showErr("The PDF splitting library did not load. Check your connection and reload the page."); }
@@ -719,7 +1211,7 @@ async function run(){
             {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
               (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
           ];
-          const res = await fetchWithRetry(key, content);
+          const res = await fetchWithRetry(key, content, undefined, mainAbort.signal);
           if(!res.ok){
             const errtxt = await res.text();
             throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
@@ -740,7 +1232,7 @@ async function run(){
         {type:"text",text:"FRONT-END SPEC TEXT:\n\n"+t},
         {type:"text",text:"Extract the bid requirements as specified."+(proj?(" Project: "+proj):"")}
       ];
-      const res = await fetchWithRetry(key, content);
+      const res = await fetchWithRetry(key, content, undefined, mainAbort.signal);
       if(!res.ok){
         const errtxt = await res.text();
         throw new Error("API "+res.status+": "+errtxt.slice(0,300));
@@ -756,9 +1248,300 @@ async function run(){
     lastData = merged;
     render(merged);
   }catch(e){
-    showErr(cleanErr(e.message));
+    if(e.name==='AbortError'){
+      if(pagesProcessed>0 && results.length>0){
+        const merged = results.length>1 ? mergeResults(results) : results[0];
+        merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
+        lastData = merged;
+        render(merged);
+      } else {
+        document.getElementById('msg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
+      }
+    } else {
+      showErr(cleanErr(e.message));
+    }
   }finally{
     setRunning(false);
+  }
+}
+
+async function runDrawings(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('dwgMsg').innerHTML='';
+  if(!key){ return showDwgErr("Add your Anthropic API key up top first."); }
+  const proj = document.getElementById('dwgProj').value.trim();
+  const pagesPerBatch = Math.max(1, parseInt(document.getElementById('dwgPagesPerBatch').value,10) || 5);
+  const testCap = parseInt(document.getElementById('dwgTestCap').value,10) || 0;
+
+  if(dwgFiles.length===0){ return showDwgErr("Add at least one drawing set PDF."); }
+  if(typeof PDFLib==='undefined'){ return showDwgErr("The PDF splitting library did not load. Check your connection and reload the page."); }
+
+  setDwgRunning(true);
+  dwgAbort = new AbortController();
+  try{
+    const results = [];
+    let pagesProcessed = 0;
+    let wasTruncated = false;
+
+    outer:
+    for(let i=0;i<dwgFiles.length;i++){
+      const f = dwgFiles[i];
+      let batches;
+      try{
+        batches = await splitIntoBatches(f.buf, pagesPerBatch);
+      }catch(splitErr){
+        throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
+      }
+      for(let b=0;b<batches.length;b++){
+        const batch = batches[b];
+        if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
+        const displayTotalPages = testCap ? Math.min(testCap, batch.totalPages) : batch.totalPages;
+        const displayTotalBatches = testCap ? Math.min(batches.length, Math.ceil(testCap / pagesPerBatch)) : batches.length;
+        document.getElementById('dwgRunHint').textContent =
+          (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
+          'File ' + (i+1) + ' of ' + dwgFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
+          ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
+        const content = [
+          {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
+          {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
+            (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
+        ];
+        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAbort.signal);
+        if(!res.ok){
+          const errtxt = await res.text();
+          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
+        }
+        const data = await res.json();
+        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
+        const parsed = parseJSON(text);
+        if(!parsed){ throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400)); }
+        results.push(parsed);
+        pagesProcessed += (batch.endPage - batch.startPage + 1);
+        if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
+      }
+    }
+
+    const merged = results.length>1 ? mergeResults(results) : results[0];
+    merged._testRun = wasTruncated ? { cap: testCap, pagesProcessed } : null;
+    lastDwgData = merged;
+    renderDwg(merged);
+  }catch(e){
+    if(e.name==='AbortError'){
+      if(pagesProcessed>0 && results.length>0){
+        const merged = results.length>1 ? mergeResults(results) : results[0];
+        merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
+        lastDwgData = merged;
+        renderDwg(merged);
+      } else {
+        document.getElementById('dwgMsg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
+      }
+    } else {
+      showDwgErr(cleanErr(e.message));
+    }
+  }finally{
+    setDwgRunning(false);
+  }
+}
+
+function showDwgErr(html){
+  document.getElementById('dwgMsg').innerHTML = `<div class="note err"><b>Hold on.</b> ${html}</div>`;
+}
+function setDwgRunning(on){
+  document.getElementById('dwgRun').disabled = on;
+  document.getElementById('dwgRunStop').classList.toggle('show', on);
+  document.getElementById('dwgSpin').style.display = on?'inline-block':'none';
+  document.getElementById('dwgRunLabel').textContent = on?'Reading…':'Read the drawings';
+  document.getElementById('dwgRunHint').textContent = on?'Reading the drawing set and locating each finding.':'';
+}
+
+function stopDrawings(){
+  if(dwgAbort) dwgAbort.abort();
+}
+
+function groupByCatDwg(items){
+  const by={};
+  items.forEach(i=>{ const c=i.category||'Human Review Items'; (by[c]=by[c]||[]).push(i); });
+  return by;
+}
+
+function renderDwg(d){
+  const items = (d.items||[]);
+  const watch = items.filter(i=>i.is_watchout);
+  const sc = d.scores||{};
+  const overall = (sc.overall||'').toUpperCase();
+  const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
+
+  const msgEl = document.getElementById('dwgMsg');
+  if(d._testRun && d._testRun.stoppedByUser){
+    msgEl.innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563">
+      <b>Stopped by you.</b> This covers roughly ${d._testRun.pagesProcessed} pages read before you clicked Stop, not the full drawing set. Run again for the complete set when you're ready.
+    </div>`;
+  } else if(d._testRun){
+    msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
+      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the drawing set's pages (your ${d._testRun.cap}-page test cap). Switch <b>Test run</b> back to "Full document" and rerun when you're ready for the real pass.
+    </div>`;
+  } else {
+    msgEl.innerHTML='';
+  }
+
+  const s = document.getElementById('dwgSummary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Project</div>
+      <div class="pv">${esc(d.project||document.getElementById('dwgProj').value||'Untitled drawing set')}</div>
+    </div>
+    <div class="stat"><div class="n">${items.length}</div><div class="l">Findings</div></div>
+    <div class="stat warn"><div class="n">${watch.length}</div><div class="l">Watch-outs</div></div>`;
+
+  const sb = document.getElementById('dwgScorebar');
+  if(overall){
+    sb.style.display='flex';
+    sb.style.borderLeftColor = bandColor;
+    sb.innerHTML = `
+      <div class="band" style="background:${bandColor}">${esc(overall||'?')}<span class="bandsub">Advisory read, not a verdict. Confirm before pricing.</span></div>
+      <div class="scoregrid">
+        ${scoreChip('Pricing', sc.pricing_risk)}
+        ${scoreChip('Coordination', sc.contract_risk)}
+      </div>`;
+  } else {
+    sb.style.display='none';
+  }
+
+  const byCat = groupByCatDwg(items);
+  const g = document.getElementById('dwgGroups');
+  g.innerHTML='';
+  ORDER_DWG.forEach(cat=>{
+    if(!byCat[cat]) return;
+    const isWatch = WATCH_BUCKETS_DWG.has(cat);
+    const sec = document.createElement('div');
+    sec.className='grp'+(isWatch?' watch':'');
+    sec.innerHTML = `<div class="grp-h"><span class="t">${esc(cat)}</span><span class="c">${byCat[cat].length}</span></div>`;
+    byCat[cat].forEach(it=>sec.appendChild(itemEl(it)));
+    g.appendChild(sec);
+  });
+  document.getElementById('dwgResults').style.display='block';
+  document.getElementById('dwgMsg').innerHTML='';
+  document.getElementById('dwgResults').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function dwgOrderedRows(d){
+  const byCat=groupByCatDwg(d.items||[]);
+  const rows=[];
+  ORDER_DWG.forEach(cat=>{ (byCat[cat]||[]).forEach(i=>rows.push({cat,i})); });
+  return rows;
+}
+
+function dwgFname(ext){
+  const base=((lastDwgData&&lastDwgData.project)||document.getElementById('dwgProj').value||'drawings').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'drawings';
+  return base+'-drawing-findings.'+ext;
+}
+
+function copyDwgText(btn){
+  if(!lastDwgData) return;
+  try{
+    const d = lastDwgData;
+    let out = (d.project? d.project+'\n':'') + 'DRAWING FINDINGS\n\n';
+    let cur=null;
+    dwgOrderedRows(d).forEach(({cat,i})=>{
+      if(cat!==cur){ out+=cat.toUpperCase()+'\n'; cur=cat; }
+      out += '  ['+(i.done?'x':' ')+'] '+(i.topic?'['+i.topic+'] ':'')+(i.requirement||'')+(i.detail?': '+i.detail:'')+'  ('+(i.source||'loc?')+')'+(i.confidence==='low'?' [VERIFY]':'')+'\n';
+    });
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showDwgErr("Copy failed: "+e.message+". Your browser may be blocking clipboard access on this page."));
+  }catch(e){
+    console.error(e);
+    showDwgErr("Copy failed: " + e.message);
+  }
+}
+
+function downloadDwgExcel(btn){
+  if(!lastDwgData) return;
+  if(typeof XLSX==='undefined') return showDwgErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const d=lastDwgData;
+    const rows=[
+      [(d.project||'Drawings')+' Drawing Findings'],
+      [],
+      ['Done','Bucket','Topic','Finding','Detail','Source','Watch-out','Confidence']
+    ];
+    dwgOrderedRows(d).forEach(({cat,i})=>{
+      rows.push([i.done?'X':'', cat, i.topic||'', i.requirement||'', i.detail||'', i.source||'', i.is_watchout?'YES':'', (i.confidence||'').toUpperCase()]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:6},{wch:20},{wch:16},{wch:44},{wch:38},{wch:20},{wch:10},{wch:12}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Drawing Findings');
+    XLSX.writeFile(wb, dwgFname('xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showDwgErr("Excel download failed: " + e.message + ". Try <b>Copy as checklist</b> instead, or reload and rerun.");
+  }
+}
+
+function downloadDwgPDF(btn){
+  if(!lastDwgData) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showDwgErr("The PDF library did not load. Check the connection and reload the page.");
+  const d=lastDwgData;
+  const rowCount = (d.items||[]).length;
+  if(rowCount > 150){
+    const proceed = confirm(rowCount + ' findings is a lot for a PDF to lay out in the browser and can take a while or make the tab look frozen/blank while it works. Excel or Copy as checklist handle large lists much faster. Continue with PDF anyway?');
+    if(!proceed) return;
+  }
+  try{
+    const sc=d.scores||{};
+    const overall=(sc.overall||'').toUpperCase();
+    const bandRGB = overall==='RED' ? [180,69,31] : overall==='YELLOW' ? [184,134,11] : [46,125,87];
+    const { jsPDF }=window.jspdf;
+    const doc=new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const pageW=612; const maxW=pageW-2*M; let y=50;
+
+    function wrapped(text, size, weight, color, lineGap){
+      doc.setFont('helvetica', weight); doc.setFontSize(size); doc.setTextColor(color[0],color[1],color[2]);
+      const lines = doc.splitTextToSize(String(text), maxW);
+      lines.forEach(line=>{ doc.text(line, M, y); y += lineGap; });
+    }
+
+    wrapped((d.project||'Drawings')+'  Drawing Findings', 15, 'bold', [22,48,75], 18);
+    y += 7;
+
+    if(overall){
+      const bandH = 46;
+      doc.setFillColor(bandRGB[0],bandRGB[1],bandRGB[2]);
+      doc.rect(M, y, maxW, bandH, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(255,255,255);
+      doc.text('OVERALL: '+overall, M+12, y+19);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.text('Advisory read, not a verdict. Confirm before pricing.', M+12, y+34);
+      y += bandH + 20;
+    }
+
+    const rows=dwgOrderedRows(d);
+    const body=rows.map(({cat,i})=>{
+      const flags=[i.done?'DONE':'', i.is_watchout?'WATCH-OUT':'', i.confidence==='low'?'VERIFY':''].filter(Boolean).join('\n');
+      return [cat, i.topic||'', (i.requirement||'')+(i.detail?('\n'+i.detail):''), i.source||'loc?', flags];
+    });
+    doc.autoTable({
+      startY:y,
+      head:[['Bucket','Topic','Finding','Source','Flags']],
+      body,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+      headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:76}, 1:{cellWidth:58}, 2:{cellWidth:'auto'}, 3:{cellWidth:118,fontSize:8}, 4:{cellWidth:52,fontSize:7,fontStyle:'bold'} },
+      didParseCell:function(hook){
+        if(hook.section!=='body') return;
+        const r=rows[hook.row.index];
+        if(!r) return;
+        if(r.i.done){ hook.cell.styles.fillColor=[232,244,236]; hook.cell.styles.textColor=[110,120,115]; }
+        else if(r.i.is_watchout){ hook.cell.styles.fillColor=[251,236,228]; }
+      },
+      margin:{left:M,right:M}
+    });
+    doc.save(dwgFname('pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showDwgErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy as checklist</b> instead, they handle large lists more reliably.");
   }
 }
 
@@ -786,9 +1569,14 @@ function showErr(html){
 }
 function setRunning(on){
   document.getElementById('run').disabled = on;
+  document.getElementById('runStop').classList.toggle('show', on);
   document.getElementById('spin').style.display = on?'inline-block':'none';
   document.getElementById('runlabel').textContent = on?'Reading…':'Read the documents';
   document.getElementById('runhint').textContent = on?'Reading the front end and locating each requirement.':'';
+}
+
+function stopRun(){
+  if(mainAbort) mainAbort.abort();
 }
 
 function groupByCat(items){
@@ -805,7 +1593,11 @@ function render(d){
   const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
 
   const msgEl = document.getElementById('msg');
-  if(d._testRun){
+  if(d._testRun && d._testRun.stoppedByUser){
+    msgEl.innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563">
+      <b>Stopped by you.</b> This covers roughly ${d._testRun.pagesProcessed} pages read before you clicked Stop, not the full document. Run again for the complete document when you're ready.
+    </div>`;
+  } else if(d._testRun){
     msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
       <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page test cap). This is a preview to check formatting and quality, not a full checklist. Switch <b>Test run</b> back to "Full document" and rerun when you're ready for the real pass.
     </div>`;
@@ -1074,6 +1866,8 @@ async function runMasterCheck(btn){
   const origLabel = btn.textContent;
   btn.disabled = true;
   btn.textContent = usingPdf ? 'Reading master checklist PDF…' : 'Checking against master list…';
+  masterCheckAbort = new AbortController();
+  document.getElementById('masterCheckStop').classList.add('show');
 
   try{
     const findingsSummary = {
@@ -1093,7 +1887,7 @@ async function runMasterCheck(btn){
     content.push({type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."});
 
     btn.textContent = 'Checking against master list…';
-    const res = await fetchWithRetry(key, content, SYSTEM_MASTERCHECK);
+    const res = await fetchWithRetry(key, content, SYSTEM_MASTERCHECK, masterCheckAbort.signal);
     if(!res.ok){
       const t = await res.text();
       throw new Error("API "+res.status+": "+t.slice(0,300));
@@ -1101,16 +1895,24 @@ async function runMasterCheck(btn){
     const data = await res.json();
     const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
     const parsed = parseJSON(text);
-    if(!parsed){ throw new Error("Could not read the master-check response. Raw output:\n\n"+text.slice(0,400)); }
+    if(!parsed){
+      if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished (it ran out of room writing out the comparison — this happens with very large or detailed checklists). Try again — this has already been made less likely to recur. If it keeps happening, the checklist reference may need trimming.");
+      throw new Error("Could not read the master-check response. Raw output:\n\n"+text.slice(0,400));
+    }
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
   }catch(e){
     console.error(e);
-    document.getElementById('masterMsg').innerHTML =
-      '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    if(e.name==='AbortError'){
+      document.getElementById('masterMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
+    } else {
+      document.getElementById('masterMsg').innerHTML =
+        '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
   }finally{
     btn.disabled = false;
     btn.textContent = origLabel;
+    document.getElementById('masterCheckStop').classList.remove('show');
   }
 }
 
@@ -1253,23 +2055,777 @@ function downloadMasterCheckPDF(btn){
   }
 }
 
+let lastSecondCheck = null;
+
+async function runSecondCheck(btn){
+  if(!lastData){ return; }
+  document.getElementById('secondMsg').innerHTML='';
+
+  const usingPdf = secondMode === 'pdf';
+  const secondText = document.getElementById('secondChecklist').value.trim();
+  if(usingPdf && !secondFile){
+    document.getElementById('secondMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Attach your second checklist PDF above first, or switch to <b>Paste text</b>.</div>';
+    return;
+  }
+  if(!usingPdf && !secondText){
+    document.getElementById('secondMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Paste your second checklist reference text first, or switch to <b>Upload PDF</b>.</div>';
+    return;
+  }
+  const key = document.getElementById('key').value.trim();
+  if(!key){
+    document.getElementById('secondMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>';
+    return;
+  }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = usingPdf ? 'Reading checklist 2 PDF…' : 'Checking against checklist 2…';
+  secondCheckAbort = new AbortController();
+  document.getElementById('secondCheckStop').classList.add('show');
+
+  try{
+    const findingsSummary = {
+      project: lastData.project,
+      bid_due: lastData.bid_due,
+      items: (lastData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+    };
+    const content = [];
+    if(usingPdf){
+      const b64 = arrayBufferToBase64(new Uint8Array(secondFile.buf));
+      content.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
+      content.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this bid's second, independent reference list), a standing reference. Read the whole thing."});
+    } else {
+      content.push({type:"text", text:"MASTER CHECKLIST:\n\n"+secondText});
+    }
+    content.push({type:"text", text:"BID FINDINGS (already extracted from this specific bid):\n\n"+JSON.stringify(findingsSummary, null, 2)});
+    content.push({type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."});
+
+    btn.textContent = 'Checking against checklist 2…';
+    const res = await fetchWithRetry(key, content, SYSTEM_MASTERCHECK, secondCheckAbort.signal);
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error("API "+res.status+": "+t.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){
+      if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished (it ran out of room writing out the comparison — this happens with very large or detailed checklists). Try again — this has already been made less likely to recur. If it keeps happening, the checklist reference may need trimming.");
+      throw new Error("Could not read the checklist-2 response. Raw output:\n\n"+text.slice(0,400));
+    }
+    lastSecondCheck = parsed;
+    renderSecondCheck(parsed);
+  }catch(e){
+    console.error(e);
+    if(e.name==='AbortError'){
+      document.getElementById('secondMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
+    } else {
+      document.getElementById('secondMsg').innerHTML =
+        '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
+  }finally{
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    document.getElementById('secondCheckStop').classList.remove('show');
+  }
+}
+
+function renderSecondCheck(d){
+  const coverage = d.coverage||[];
+  const missing = coverage.filter(i=>i.status==='Missing');
+  const covered = coverage.filter(i=>i.status==='Covered');
+  const na = coverage.filter(i=>i.status==='Not Applicable');
+
+  const s = document.getElementById('secondCheckSummary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Checklist 2 Coverage</div>
+      <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
+    </div>
+    <div class="stat"><div class="n">${covered.length}</div><div class="l">Covered</div></div>
+    <div class="stat warn"><div class="n">${missing.length}</div><div class="l">Missing</div></div>
+    <div class="stat"><div class="n">${na.length}</div><div class="l">N/A</div></div>`;
+
+  const groups = document.getElementById('secondCheckGroups');
+  groups.innerHTML = '';
+  [['Missing', missing, true], ['Covered', covered, false], ['Not Applicable', na, false]].forEach(([label, list])=>{
+    if(!list.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'grp' + (label==='Missing' ? ' watch' : '');
+    sec.innerHTML = `<div class="grp-h"><span class="t">${label}</span><span class="c">${list.length}</span></div>`;
+    list.forEach(it=>{
+      const row = document.createElement('div');
+      row.className = 'item';
+      row.innerHTML = `<div class="body"><div class="req"></div><div class="det"></div></div>`;
+      row.querySelector('.req').textContent = it.master_item || '(unlabeled)';
+      row.querySelector('.det').textContent = it.note || '';
+      sec.appendChild(row);
+    });
+    groups.appendChild(sec);
+  });
+
+  document.getElementById('secondCheckResults').style.display = 'block';
+  document.getElementById('secondCheckResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function copySecondCheckText(btn){
+  if(!lastSecondCheck) return;
+  try{
+    const d = lastSecondCheck;
+    let out = 'CHECKLIST 2 COVERAGE\n' + (d.summary||'') + '\n\n';
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      const list = (d.coverage||[]).filter(i=>i.status===label);
+      if(!list.length) return;
+      out += label.toUpperCase()+'\n';
+      list.forEach(i=>{ out += '  - '+(i.master_item||'')+(i.note?': '+i.note:'')+'\n'; });
+      out += '\n';
+    });
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showErr("Copy failed: "+e.message));
+  }catch(e){
+    console.error(e);
+    showErr("Copy failed: " + e.message);
+  }
+}
+
+function secondCheckFname(ext){
+  const base=((lastData&&lastData.project)||document.getElementById('proj').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
+  return base+'-checklist-2-coverage.'+ext;
+}
+
+function downloadSecondCheckExcel(btn){
+  if(!lastSecondCheck) return;
+  if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastSecondCheck;
+    const rows = [
+      ['Checklist 2 Coverage'],
+      ['Summary', d.summary||''],
+      [],
+      ['Status','Checklist Item','Note']
+    ];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push([label, i.master_item||'', i.note||'']);
+      });
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Checklist 2 Coverage');
+    XLSX.writeFile(wb, secondCheckFname('xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("Excel download failed: " + e.message + ". Try <b>Copy gap report</b> instead.");
+  }
+}
+
+function downloadSecondCheckPDF(btn){
+  if(!lastSecondCheck) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showErr("The PDF library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastSecondCheck;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const maxW=612-2*M; let y=50;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+    doc.text('Checklist 2 Coverage', M, y); y+=20;
+    if(d.summary){
+      doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+      const lines = doc.splitTextToSize(d.summary, maxW);
+      lines.forEach(line=>{ doc.text(line, M, y); y+=13; });
+    }
+    y += 8;
+
+    const rows = [];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push({ status:label, item:i.master_item||'', note:i.note||'' });
+      });
+    });
+    const body = rows.map(r => [r.status, r.item, r.note]);
+
+    doc.autoTable({
+      startY: y,
+      head: [['Status','Checklist Item','Note']],
+      body,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+      headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:80,fontStyle:'bold'}, 1:{cellWidth:150}, 2:{cellWidth:'auto'} },
+      didParseCell:function(hook){
+        if(hook.section!=='body') return;
+        const r = rows[hook.row.index];
+        if(r && r.status==='Missing'){ hook.cell.styles.fillColor=[251,236,228]; }
+      },
+      margin:{left:M,right:M}
+    });
+    doc.save(secondCheckFname('pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy gap report</b> instead.");
+  }
+}
+
+let lastThirdCheck = null;
+
+async function runThirdCheck(btn){
+  if(!lastDwgData){ return; }
+  document.getElementById('thirdMsg').innerHTML='';
+
+  const usingPdf = thirdMode === 'pdf';
+  const thirdText = document.getElementById('thirdChecklist').value.trim();
+  if(usingPdf && !thirdFile){
+    document.getElementById('thirdMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Attach your Checklist 3 PDF above first, or switch to <b>Paste text</b>.</div>';
+    return;
+  }
+  if(!usingPdf && !thirdText){
+    document.getElementById('thirdMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Paste your Checklist 3 reference text first, or switch to <b>Upload PDF</b>.</div>';
+    return;
+  }
+  const key = document.getElementById('key').value.trim();
+  if(!key){
+    document.getElementById('thirdMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>';
+    return;
+  }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = usingPdf ? 'Reading checklist 3 PDF…' : 'Checking against checklist 3…';
+  thirdCheckAbort = new AbortController();
+  document.getElementById('thirdCheckStop').classList.add('show');
+
+  try{
+    const findingsSummary = {
+      project: lastDwgData.project,
+      items: (lastDwgData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+    };
+    const content = [];
+    if(usingPdf){
+      const b64 = arrayBufferToBase64(new Uint8Array(thirdFile.buf));
+      content.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
+      content.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this project's drawing-review reference list), a standing reference. Read the whole thing."});
+    } else {
+      content.push({type:"text", text:"MASTER CHECKLIST:\n\n"+thirdText});
+    }
+    content.push({type:"text", text:"BID FINDINGS (already extracted from this drawing set):\n\n"+JSON.stringify(findingsSummary, null, 2)});
+    content.push({type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."});
+
+    btn.textContent = 'Checking against checklist 3…';
+    const res = await fetchWithRetry(key, content, SYSTEM_MASTERCHECK, thirdCheckAbort.signal);
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error("API "+res.status+": "+t.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){
+      if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished (it ran out of room writing out the comparison — this happens with very large or detailed checklists). Try again — this has already been made less likely to recur. If it keeps happening, the checklist reference may need trimming.");
+      throw new Error("Could not read the checklist-3 response. Raw output:\n\n"+text.slice(0,400));
+    }
+    lastThirdCheck = parsed;
+    renderThirdCheck(parsed);
+  }catch(e){
+    console.error(e);
+    if(e.name==='AbortError'){
+      document.getElementById('thirdMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
+    } else {
+      document.getElementById('thirdMsg').innerHTML =
+        '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
+  }finally{
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    document.getElementById('thirdCheckStop').classList.remove('show');
+  }
+}
+
+function renderThirdCheck(d){
+  const coverage = d.coverage||[];
+  const missing = coverage.filter(i=>i.status==='Missing');
+  const covered = coverage.filter(i=>i.status==='Covered');
+  const na = coverage.filter(i=>i.status==='Not Applicable');
+
+  const s = document.getElementById('thirdCheckSummary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Checklist 3 Coverage</div>
+      <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
+    </div>
+    <div class="stat"><div class="n">${covered.length}</div><div class="l">Covered</div></div>
+    <div class="stat warn"><div class="n">${missing.length}</div><div class="l">Missing</div></div>
+    <div class="stat"><div class="n">${na.length}</div><div class="l">N/A</div></div>`;
+
+  const groups = document.getElementById('thirdCheckGroups');
+  groups.innerHTML = '';
+  [['Missing', missing], ['Covered', covered], ['Not Applicable', na]].forEach(([label, list])=>{
+    if(!list.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'grp' + (label==='Missing' ? ' watch' : '');
+    sec.innerHTML = `<div class="grp-h"><span class="t">${label}</span><span class="c">${list.length}</span></div>`;
+    list.forEach(it=>{
+      const row = document.createElement('div');
+      row.className = 'item';
+      row.innerHTML = `<div class="body"><div class="req"></div><div class="det"></div></div>`;
+      row.querySelector('.req').textContent = it.master_item || '(unlabeled)';
+      row.querySelector('.det').textContent = it.note || '';
+      sec.appendChild(row);
+    });
+    groups.appendChild(sec);
+  });
+
+  document.getElementById('thirdCheckResults').style.display = 'block';
+  document.getElementById('thirdCheckResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function copyThirdCheckText(btn){
+  if(!lastThirdCheck) return;
+  try{
+    const d = lastThirdCheck;
+    let out = 'CHECKLIST 3 COVERAGE\n' + (d.summary||'') + '\n\n';
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      const list = (d.coverage||[]).filter(i=>i.status===label);
+      if(!list.length) return;
+      out += label.toUpperCase()+'\n';
+      list.forEach(i=>{ out += '  - '+(i.master_item||'')+(i.note?': '+i.note:'')+'\n'; });
+      out += '\n';
+    });
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showDwgErr("Copy failed: "+e.message));
+  }catch(e){
+    console.error(e);
+    showDwgErr("Copy failed: " + e.message);
+  }
+}
+
+function thirdCheckFname(ext){
+  const base=((lastDwgData&&lastDwgData.project)||document.getElementById('dwgProj').value||'drawings').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'drawings';
+  return base+'-checklist-3-coverage.'+ext;
+}
+
+function downloadThirdCheckExcel(btn){
+  if(!lastThirdCheck) return;
+  if(typeof XLSX==='undefined') return showDwgErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastThirdCheck;
+    const rows = [
+      ['Checklist 3 Coverage'],
+      ['Summary', d.summary||''],
+      [],
+      ['Status','Checklist Item','Note']
+    ];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push([label, i.master_item||'', i.note||'']);
+      });
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Checklist 3 Coverage');
+    XLSX.writeFile(wb, thirdCheckFname('xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showDwgErr("Excel download failed: " + e.message + ". Try <b>Copy gap report</b> instead.");
+  }
+}
+
+function downloadThirdCheckPDF(btn){
+  if(!lastThirdCheck) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showDwgErr("The PDF library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastThirdCheck;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const maxW=612-2*M; let y=50;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+    doc.text('Checklist 3 Coverage', M, y); y+=20;
+    if(d.summary){
+      doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
+      const lines = doc.splitTextToSize(d.summary, maxW);
+      lines.forEach(line=>{ doc.text(line, M, y); y+=13; });
+    }
+    y += 8;
+
+    const rows = [];
+    ['Missing','Covered','Not Applicable'].forEach(label=>{
+      (d.coverage||[]).filter(i=>i.status===label).forEach(i=>{
+        rows.push({ status:label, item:i.master_item||'', note:i.note||'' });
+      });
+    });
+    const body = rows.map(r => [r.status, r.item, r.note]);
+
+    doc.autoTable({
+      startY: y,
+      head: [['Status','Checklist Item','Note']],
+      body,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+      headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:80,fontStyle:'bold'}, 1:{cellWidth:150}, 2:{cellWidth:'auto'} },
+      didParseCell:function(hook){
+        if(hook.section!=='body') return;
+        const r = rows[hook.row.index];
+        if(r && r.status==='Missing'){ hook.cell.styles.fillColor=[251,236,228]; }
+      },
+      margin:{left:M,right:M}
+    });
+    doc.save(thirdCheckFname('pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showDwgErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy gap report</b> instead.");
+  }
+}
+
+let lastKickoff = null;
+
+function renderKickoffStatus(){
+  const inputs = [
+    { key:'Spec Extraction', ready: !!lastData },
+    { key:'Checklist 1', ready: !!lastMasterCheck },
+    { key:'Checklist 2', ready: !!lastSecondCheck },
+    { key:'Drawing Extraction', ready: !!lastDwgData },
+    { key:'Checklist 3', ready: !!lastThirdCheck }
+  ];
+  const el = document.getElementById('kickoffStatus');
+  el.innerHTML = '';
+  inputs.forEach(i=>{
+    const chip = document.createElement('div');
+    chip.className = 'statuschip' + (i.ready?' ready':'');
+    chip.innerHTML = `<span class="dot"></span><span></span>`;
+    chip.querySelector('span:last-child').textContent = i.key + (i.ready ? ' — ready' : ' — not run yet');
+    el.appendChild(chip);
+  });
+  const readyCount = inputs.filter(i=>i.ready).length;
+  const hint = document.getElementById('kickoffStatusHint');
+  if(readyCount===0){
+    hint.textContent = 'Nothing to work from yet. Run at least the spec extraction on the Bid Documents tab first.';
+  } else if(readyCount<inputs.length){
+    hint.textContent = 'You can generate a kickoff sheet from what\'s ready now, or go run the rest first for a fuller picture. Missing inputs are just left out, not guessed at.';
+  } else {
+    hint.textContent = 'All five inputs are ready.';
+  }
+}
+
+async function runKickoff(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('kickoffMsg').innerHTML = '';
+  if(!key){ return showKickoffErr("Add your Anthropic API key up top first."); }
+  if(!lastData && !lastMasterCheck && !lastSecondCheck && !lastDwgData && !lastThirdCheck){
+    return showKickoffErr("Nothing to work from yet. Run at least the spec extraction on the Bid Documents tab first.");
+  }
+
+  setKickoffRunning(true);
+  kickoffAbort = new AbortController();
+  try{
+    const payload = { project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
+    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:(lastData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
+    if(lastMasterCheck) payload.checklist_1_coverage = lastMasterCheck;
+    if(lastSecondCheck) payload.checklist_2_coverage = lastSecondCheck;
+    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:(lastDwgData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
+    if(lastThirdCheck) payload.checklist_3_coverage = lastThirdCheck;
+
+    const content = [
+      {type:"text", text:"Here are the available prior outputs for this project, as JSON:\n\n"+JSON.stringify(payload, null, 2)},
+      {type:"text", text:"Produce the Bid Kickoff Sheet as instructed. Return the JSON schema only."}
+    ];
+    const res = await fetchWithRetry(key, content, SYSTEM_KICKOFF, kickoffAbort.signal);
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error("API "+res.status+": "+t.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){ throw new Error("Could not read the kickoff sheet response. Raw output:\n\n"+text.slice(0,400)); }
+    lastKickoff = parsed;
+    renderKickoff(parsed);
+  }catch(e){
+    if(e.name==='AbortError'){
+      document.getElementById('kickoffMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
+    } else {
+      showKickoffErr(cleanErr(e.message));
+    }
+  }finally{
+    setKickoffRunning(false);
+  }
+}
+
+function showKickoffErr(html){
+  document.getElementById('kickoffMsg').innerHTML = `<div class="note err"><b>Hold on.</b> ${html}</div>`;
+}
+function setKickoffRunning(on){
+  document.getElementById('kickoffRun').disabled = on;
+  document.getElementById('kickoffRunStop').classList.toggle('show', on);
+  document.getElementById('kickoffSpin').style.display = on?'inline-block':'none';
+  document.getElementById('kickoffRunLabel').textContent = on?'Weighing everything…':'Generate the kickoff sheet';
+  document.getElementById('kickoffRunHint').textContent = on?'Reading the prior outputs and cross-referencing them.':'';
+}
+
+function stopKickoff(){
+  if(kickoffAbort) kickoffAbort.abort();
+}
+function stopMasterCheck(){
+  if(masterCheckAbort) masterCheckAbort.abort();
+}
+function stopSecondCheck(){
+  if(secondCheckAbort) secondCheckAbort.abort();
+}
+function stopThirdCheck(){
+  if(thirdCheckAbort) thirdCheckAbort.abort();
+}
+
+function renderKickoff(d){
+  const rec = d.recommendation||{};
+  const verdict = (rec.verdict||'').toUpperCase();
+  const bandColor = verdict==='DO NOT BID YET' ? '#B4451F' : verdict==='BID WITH CAUTION' ? '#B8860B' : '#2E7D57';
+
+  const s = document.getElementById('kickoffSummary');
+  s.innerHTML = `
+    <div class="proj">
+      <div class="pl">Project</div>
+      <div class="pv">${esc(d.project||'Untitled project')}</div>
+    </div>
+    <div class="stat"><div class="n">${(d.top_risks||[]).length}</div><div class="l">Top Risks</div></div>
+    <div class="stat warn"><div class="n">${(d.conflicts||[]).length}</div><div class="l">Conflicts</div></div>
+    <div class="stat"><div class="n">${(d.open_items||[]).length}</div><div class="l">Open Items</div></div>`;
+
+  const sb = document.getElementById('kickoffScorebar');
+  if(verdict){
+    sb.style.display='flex';
+    sb.style.borderLeftColor = bandColor;
+    sb.innerHTML = `
+      <div class="band" style="background:${bandColor}">${esc(verdict)}<span class="bandsub">${esc(rec.reasoning||'')}</span></div>
+      <div class="scoregrid"></div>`;
+  } else {
+    sb.style.display='none';
+  }
+
+  const body = document.getElementById('kickoffBody');
+  body.innerHTML = '';
+
+  function section(title, rows, renderRow){
+    if(!rows || !rows.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'grp';
+    sec.innerHTML = `<div class="grp-h"><span class="t">${esc(title)}</span><span class="c">${rows.length}</span></div>`;
+    rows.forEach(r=>{
+      const row = document.createElement('div');
+      row.className = 'item';
+      row.innerHTML = `<div class="body"><div class="req"></div><div class="det"></div><div class="meta"><span class="stamp"></span></div></div>`;
+      renderRow(row, r);
+      sec.appendChild(row);
+    });
+    body.appendChild(sec);
+  }
+
+  section('Key Dates', d.key_dates, (row,r)=>{
+    row.querySelector('.req').textContent = r.label||'';
+    row.querySelector('.det').textContent = r.date||'';
+    row.querySelector('.stamp').style.display='none';
+  });
+  section('Critical Submission Items', d.critical_submission_items, (row,r)=>{
+    row.querySelector('.req').textContent = r.item||'';
+    row.querySelector('.det').textContent = r.detail||'';
+    row.querySelector('.stamp').textContent = r.source||'';
+  });
+  section('Top Risks', d.top_risks, (row,r)=>{
+    row.className += ' watch-row';
+    row.querySelector('.req').textContent = (r.topic?r.topic+': ':'')+(r.description||'');
+    row.querySelector('.det').textContent = '';
+    row.querySelector('.stamp').textContent = r.source||'';
+  });
+  section('Conflicts Between Documents', d.conflicts, (row,r)=>{
+    row.querySelector('.req').textContent = r.description||'';
+    row.querySelector('.det').textContent = '';
+    row.querySelector('.stamp').textContent = r.sources||'';
+  });
+  section('Open Items — Needs a Human Decision or RFI', d.open_items, (row,r)=>{
+    row.querySelector('.req').textContent = r.description||'';
+    row.querySelector('.det').textContent = r.why||'';
+    row.querySelector('.stamp').style.display='none';
+  });
+
+  document.getElementById('kickoffResults').style.display = 'block';
+  document.getElementById('kickoffResults').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function kickoffFname(ext){
+  const base=((lastKickoff&&lastKickoff.project)||document.getElementById('dwgProj').value||document.getElementById('proj').value||'project').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'project';
+  return base+'-kickoff-sheet.'+ext;
+}
+
+function copyKickoffText(btn){
+  if(!lastKickoff) return;
+  try{
+    const d = lastKickoff;
+    const rec = d.recommendation||{};
+    let out = (d.project||'Project')+' — BID KICKOFF SHEET\n\n';
+    out += 'RECOMMENDATION: '+(rec.verdict||'')+'\n'+(rec.reasoning||'')+'\n\n';
+    if((d.key_dates||[]).length){ out+='KEY DATES\n'; d.key_dates.forEach(r=>out+='  - '+(r.label||'')+': '+(r.date||'')+'\n'); out+='\n'; }
+    if((d.critical_submission_items||[]).length){ out+='CRITICAL SUBMISSION ITEMS\n'; d.critical_submission_items.forEach(r=>out+='  - '+(r.item||'')+(r.detail?': '+r.detail:'')+'  ('+(r.source||'')+')\n'); out+='\n'; }
+    if((d.top_risks||[]).length){ out+='TOP RISKS\n'; d.top_risks.forEach(r=>out+='  - '+(r.topic?r.topic+': ':'')+(r.description||'')+'  ('+(r.source||'')+')\n'); out+='\n'; }
+    if((d.conflicts||[]).length){ out+='CONFLICTS BETWEEN DOCUMENTS\n'; d.conflicts.forEach(r=>out+='  - '+(r.description||'')+'  ('+(r.sources||'')+')\n'); out+='\n'; }
+    if((d.open_items||[]).length){ out+='OPEN ITEMS\n'; d.open_items.forEach(r=>out+='  - '+(r.description||'')+(r.why?' — '+r.why:'')+'\n'); out+='\n'; }
+    navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showKickoffErr("Copy failed: "+e.message));
+  }catch(e){
+    console.error(e);
+    showKickoffErr("Copy failed: " + e.message);
+  }
+}
+
+function downloadKickoffExcel(btn){
+  if(!lastKickoff) return;
+  if(typeof XLSX==='undefined') return showKickoffErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastKickoff;
+    const rec = d.recommendation||{};
+    const rows = [
+      [(d.project||'Project')+' — Bid Kickoff Sheet'],
+      ['Recommendation', rec.verdict||''],
+      ['Reasoning', rec.reasoning||''],
+      []
+    ];
+    function block(title, items, cols){
+      rows.push([title]);
+      items.forEach(it=>rows.push(cols.map(c=>it[c]||'')));
+      rows.push([]);
+    }
+    if((d.key_dates||[]).length) block('Key Dates', d.key_dates, ['label','date']);
+    if((d.critical_submission_items||[]).length) block('Critical Submission Items', d.critical_submission_items, ['item','detail','source']);
+    if((d.top_risks||[]).length) block('Top Risks', d.top_risks, ['topic','description','source']);
+    if((d.conflicts||[]).length) block('Conflicts Between Documents', d.conflicts, ['description','sources']);
+    if((d.open_items||[]).length) block('Open Items', d.open_items, ['description','why']);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:36},{wch:44},{wch:26}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Kickoff Sheet');
+    XLSX.writeFile(wb, kickoffFname('xlsx'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showKickoffErr("Excel download failed: " + e.message + ". Try <b>Copy as text</b> instead.");
+  }
+}
+
+function downloadKickoffPDF(btn){
+  if(!lastKickoff) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showKickoffErr("The PDF library did not load. Check the connection and reload the page.");
+  try{
+    const d = lastKickoff;
+    const rec = d.recommendation||{};
+    const verdict = (rec.verdict||'').toUpperCase();
+    const bandRGB = verdict==='DO NOT BID YET' ? [180,69,31] : verdict==='BID WITH CAUTION' ? [184,134,11] : [46,125,87];
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const maxW=612-2*M; let y=50;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(22,48,75);
+    doc.text((d.project||'Project')+' — Bid Kickoff Sheet', M, y); y+=24;
+
+    if(verdict){
+      const bandH=54;
+      doc.setFillColor(bandRGB[0],bandRGB[1],bandRGB[2]);
+      doc.rect(M,y,maxW,bandH,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
+      doc.text(verdict, M+12, y+18);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      const lines = doc.splitTextToSize(rec.reasoning||'', maxW-24);
+      lines.slice(0,3).forEach((line,idx)=>doc.text(line, M+12, y+32+idx*11));
+      y += bandH + 20;
+    }
+
+    function block(title, items, cols, widths){
+      if(!items || !items.length) return;
+      doc.autoTable({
+        startY:y,
+        head:[[title]],
+        body:items.map(it=>[cols.map(c=>it[c]||'').filter(Boolean).join('  —  ')]),
+        styles:{ font:'helvetica', fontSize:9, cellPadding:6, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold', fontSize:11 },
+        alternateRowStyles:{ fillColor:[247,249,251] },
+        margin:{left:M,right:M}
+      });
+      y = doc.lastAutoTable.finalY + 16;
+    }
+
+    block('Key Dates', d.key_dates, ['label','date']);
+    block('Critical Submission Items', d.critical_submission_items, ['item','detail','source']);
+    block('Top Risks', d.top_risks, ['topic','description','source']);
+    block('Conflicts Between Documents', d.conflicts, ['description','sources']);
+    block('Open Items — Needs a Human Decision or RFI', d.open_items, ['description','why']);
+
+    doc.save(kickoffFname('pdf'));
+    flash(btn);
+  }catch(e){
+    console.error(e);
+    showKickoffErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy as text</b> instead.");
+  }
+}
+
 function clearProject(btn){
   files = [];
   masterFile = null;
+  secondFile = null;
   lastData = null;
   lastMasterCheck = null;
+  lastSecondCheck = null;
   document.getElementById('proj').value = '';
   document.getElementById('text').value = '';
+  document.getElementById('file').value = '';
+  document.getElementById('masterFile').value = '';
+  document.getElementById('secondFile').value = '';
   renderFiles();
   document.getElementById('results').style.display = 'none';
   document.getElementById('masterCheckResults').style.display = 'none';
+  document.getElementById('secondCheckResults').style.display = 'none';
   document.getElementById('msg').innerHTML = '';
   document.getElementById('masterMsg').innerHTML = '';
+  document.getElementById('secondMsg').innerHTML = '';
   document.getElementById('summary').innerHTML = '';
   document.getElementById('scorebar').innerHTML = '';
   document.getElementById('groups').innerHTML = '';
   document.getElementById('masterCheckSummary').innerHTML = '';
   document.getElementById('masterCheckGroups').innerHTML = '';
+  document.getElementById('secondCheckSummary').innerHTML = '';
+  document.getElementById('secondCheckGroups').innerHTML = '';
+
+  dwgFiles = [];
+  lastDwgData = null;
+  thirdFile = null;
+  lastThirdCheck = null;
+  document.getElementById('dwgProj').value = '';
+  document.getElementById('dwgFile').value = '';
+  renderDwgFiles();
+  document.getElementById('dwgResults').style.display = 'none';
+  document.getElementById('dwgMsg').innerHTML = '';
+  document.getElementById('dwgSummary').innerHTML = '';
+  document.getElementById('dwgScorebar').innerHTML = '';
+  document.getElementById('dwgGroups').innerHTML = '';
+  document.getElementById('thirdCheckResults').style.display = 'none';
+  document.getElementById('thirdMsg').innerHTML = '';
+  document.getElementById('thirdCheckSummary').innerHTML = '';
+  document.getElementById('thirdCheckGroups').innerHTML = '';
+
+  lastKickoff = null;
+  document.getElementById('kickoffResults').style.display = 'none';
+  document.getElementById('kickoffMsg').innerHTML = '';
+  document.getElementById('kickoffSummary').innerHTML = '';
+  document.getElementById('kickoffScorebar').innerHTML = '';
+  document.getElementById('kickoffBody').innerHTML = '';
+  renderKickoffStatus();
+
   flash(btn);
 }
 </script>
