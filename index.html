@@ -262,6 +262,24 @@
     <p class="hint">Off by default: the key stays in this tab only and clears when you close it. Checking the box saves it in this browser's local storage instead, so it survives reloads, on this device only, never sent anywhere but Anthropic. Only check it on a computer only you use.</p>
   </div>
 
+  <div class="card">
+    <h2>Cloud Project (optional)</h2>
+    <p class="hint" style="margin:0 0 10px">If you fill this in, every result from every tab below saves automatically the moment it finishes — no extra clicks. Leave it blank and the app works exactly as before, everything staying only in this browser tab.</p>
+    <div class="field">
+      <label class="fld" for="cloudWorkerUrl">Worker URL</label>
+      <input type="text" id="cloudWorkerUrl" value="https://camtech-bid-reader-api.abuswa1982.workers.dev" placeholder="https://camtech-bid-reader-api.yourname.workers.dev">
+      <p class="hint">Already filled in for this tool \u2014 nobody needs to type or remember this. Only touch it if you ever point this app at a different Worker.</p>
+    </div>
+    <div class="field">
+      <label class="fld" for="cloudProject">Project name</label>
+      <input type="text" id="cloudProject" placeholder="e.g. Erie County Health Lab, Building 17 RTU Replacement">
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn2 primary" onclick="loadCloudProject(this)" type="button">Load Project</button>
+      <span class="hint" id="cloudStatus" style="margin:0"></span>
+    </div>
+  </div>
+
   <div class="pagetabs">
     <button id="ptab-bid" class="on" onclick="setPageTab('bid')" type="button">Bid Documents</button>
     <button id="ptab-dwg" onclick="setPageTab('dwg')" type="button">Drawings</button>
@@ -291,6 +309,14 @@
       <div class="filelist" id="filelist"></div>
       <div class="note" style="display:none;background:#E7F0F8;border:1px solid #CBDDEE;color:#16304B" id="sizewarn">
         <b>Large file detected.</b> This tool now splits big PDFs into small page batches automatically before sending, so this will just take longer, not fail. No action needed.
+      </div>
+      <div class="field" style="margin:14px 0 0">
+        <label class="fld" for="readMode">Reading mode</label>
+        <select id="readMode" style="max-width:340px">
+          <option value="images">Page images (default — needed for scanned/graphic PDFs)</option>
+          <option value="text">Extracted text (faster & cheaper — for typed/digital specs)</option>
+        </select>
+        <p class="hint">Extracted text pulls the actual text out of the PDF in your browser, for free, and sends that instead of a picture of each page — usually meaningfully cheaper for text-heavy specs. Only use it if the PDF was created digitally (not scanned): scanned or photographed pages have no text to pull out, and this mode won't work for them. If unsure, leave it on Page images.</p>
       </div>
       <div class="field" style="margin:14px 0 0">
         <label class="fld" for="pagesPerBatch">Pages per batch</label>
@@ -594,6 +620,121 @@ document.getElementById('key').addEventListener('input', function(){
     }
   }catch(e){ /* ignore */ }
 });
+
+// Cloud project: Worker URL is not sensitive, always remembered (unlike the API key, no opt-in needed).
+(function initCloudWorkerUrl(){
+  try{
+    const saved = localStorage.getItem('modonix_cloud_worker_url');
+    if(saved) document.getElementById('cloudWorkerUrl').value = saved;
+  }catch(e){ /* ignore */ }
+})();
+document.getElementById('cloudWorkerUrl').addEventListener('input', function(){
+  try{ localStorage.setItem('modonix_cloud_worker_url', this.value.trim()); }catch(e){ /* ignore */ }
+});
+
+function cloudStatus(msg, isErr){
+  const el = document.getElementById('cloudStatus');
+  el.textContent = msg;
+  el.style.color = isErr ? '#B4451F' : '';
+}
+
+// Fire-and-forget save: never blocks or breaks the tab's own flow if it fails.
+// Silent no-op if the Worker URL or project name hasn't been filled in \u2014 the app
+// behaves exactly as before (browser-memory-only) until someone opts into the cloud panel.
+async function saveToCloud(phase, data){
+  const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
+  const project = document.getElementById('cloudProject').value.trim();
+  if(!workerUrl || !project) return;
+  try{
+    const res = await fetch(workerUrl + '/save', {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({ project_name: project, phase, data })
+    });
+    if(res.ok){
+      cloudStatus('Saved "'+phase+'" to the cloud just now.');
+    } else {
+      cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
+    }
+  }catch(e){
+    cloudStatus('Could not reach the Worker to save. Check the Worker URL above. This tab\'s results are still fine locally.', true);
+  }
+}
+
+const CLOUD_PHASE_LABELS = {
+  spec_extraction: 'Spec Extraction',
+  checklist_1: 'Checklist 1',
+  checklist_2: 'Checklist 2',
+  drawing_extraction: 'Drawing Extraction',
+  checklist_3: 'Checklist 3',
+  kickoff_sheet: 'Kickoff Sheet'
+};
+
+async function loadCloudProject(btn){
+  const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
+  const project = document.getElementById('cloudProject').value.trim();
+  if(!workerUrl){ cloudStatus('Enter the Worker URL above first.', true); return; }
+  if(!project){ cloudStatus('Enter a project name above first.', true); return; }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  try{
+    const res = await fetch(workerUrl + '/load?project=' + encodeURIComponent(project));
+    if(!res.ok){ throw new Error('status '+res.status); }
+    const body = await res.json();
+    const rows = body.results || [];
+    if(rows.length === 0){
+      cloudStatus('No saved data found for "'+project+'". Either it\'s a new project, or check the spelling.', true);
+      return;
+    }
+    // Rows are ordered newest-first; keep only the first (latest) row per phase.
+    const latestByPhase = {};
+    rows.forEach(r=>{ if(!latestByPhase[r.phase]) latestByPhase[r.phase] = r; });
+
+    const loaded = [];
+    if(latestByPhase.spec_extraction){
+      lastData = JSON.parse(latestByPhase.spec_extraction.data);
+      render(lastData);
+      document.getElementById('proj').value = lastData.project || project;
+      loaded.push('Spec Extraction');
+    }
+    if(latestByPhase.checklist_1){
+      lastMasterCheck = JSON.parse(latestByPhase.checklist_1.data);
+      renderMasterCheck(lastMasterCheck);
+      loaded.push('Checklist 1');
+    }
+    if(latestByPhase.checklist_2){
+      lastSecondCheck = JSON.parse(latestByPhase.checklist_2.data);
+      renderSecondCheck(lastSecondCheck);
+      loaded.push('Checklist 2');
+    }
+    if(latestByPhase.drawing_extraction){
+      lastDwgData = JSON.parse(latestByPhase.drawing_extraction.data);
+      renderDwg(lastDwgData);
+      document.getElementById('dwgProj').value = lastDwgData.project || project;
+      loaded.push('Drawing Extraction');
+    }
+    if(latestByPhase.checklist_3){
+      lastThirdCheck = JSON.parse(latestByPhase.checklist_3.data);
+      renderThirdCheck(lastThirdCheck);
+      loaded.push('Checklist 3');
+    }
+    if(latestByPhase.kickoff_sheet){
+      lastKickoff = JSON.parse(latestByPhase.kickoff_sheet.data);
+      renderKickoff(lastKickoff);
+      loaded.push('Kickoff Sheet');
+    }
+    renderKickoffStatus();
+    cloudStatus('Loaded from the cloud: ' + loaded.join(', ') + '.');
+  }catch(e){
+    console.error(e);
+    cloudStatus('Could not load that project. Check the Worker URL and that it\'s deployed.', true);
+  }finally{
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+}
 
 // Remember-master: same opt-in pattern, since the master checklist is a standing reference, not per-bid.
 (function initRememberedMaster(){
@@ -913,6 +1054,52 @@ async function splitIntoBatches(fileBuf, pagesPerBatch){
   }
   return batches.length ? batches : [{ b64: arrayBufferToBase64(await srcDoc.save()), startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
 }
+
+// Lazily loads pdf.js exactly once (dynamic import works fine outside a module script).
+// Only used by the Bid Documents "Extracted text" reading mode; Drawings and everything
+// else keeps reading pages as images, since layout/visual context matters there.
+let _pdfjsLoadPromise = null;
+function getPdfJs(){
+  if(!_pdfjsLoadPromise){
+    _pdfjsLoadPromise = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.1.200/pdf.min.mjs').then(mod=>{
+      mod.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.1.200/pdf.worker.min.mjs';
+      return mod;
+    });
+  }
+  return _pdfjsLoadPromise;
+}
+
+// Splits a PDF into the same {startPage, endPage, totalPages} batch shape as splitIntoBatches,
+// but with a plain-text blob of that page range instead of a base64 sub-PDF. Also reports
+// avgCharsPerPage so the caller can warn if this looks like a scanned/image-only PDF (which
+// has no real text layer to extract, and would silently return near-empty batches).
+async function splitIntoTextBatches(fileBuf, pagesPerBatch){
+  const pdfjsLib = await getPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: fileBuf.slice(0) }).promise;
+  const totalPages = pdf.numPages;
+  const pageTexts = [];
+  let totalChars = 0;
+  for(let p=1; p<=totalPages; p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const text = content.items.map(it=>it.str).join(' ').replace(/[ \t]+/g,' ').trim();
+    pageTexts.push(text);
+    totalChars += text.length;
+  }
+  const avgCharsPerPage = totalPages ? (totalChars/totalPages) : 0;
+  const step = Math.max(1, pagesPerBatch|0);
+  const batches = [];
+  for(let start=1; start<=totalPages; start+=step){
+    const end = Math.min(start+step-1, totalPages);
+    let blob = '';
+    for(let p=start;p<=end;p++){
+      blob += '--- PAGE '+p+' ---\n'+(pageTexts[p-1] || '(no extractable text on this page)')+'\n\n';
+    }
+    batches.push({ text: blob, startPage:start, endPage:end, totalPages });
+  }
+  return { batches: batches.length?batches:[{text:'(document has no pages)',startPage:1,endPage:totalPages||1,totalPages:totalPages||1}], avgCharsPerPage };
+}
+
 function renderFiles(){
   const el = document.getElementById('filelist');
   el.innerHTML = '';
@@ -1114,14 +1301,41 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
   ]
 }`;
 
-async function fetchWithRetry(key, content, systemPrompt, signal){
+function raceWithStop(promise, signal){
+  if(!signal) return promise;
+  if(signal.aborted) return Promise.reject(new DOMException('Stopped by user','AbortError'));
+  return new Promise((resolve, reject)=>{
+    const onAbort = ()=>{ reject(new DOMException('Stopped by user','AbortError')); };
+    signal.addEventListener('abort', onAbort, {once:true});
+    promise.then(
+      v=>{ signal.removeEventListener('abort', onAbort); resolve(v); },
+      e=>{ signal.removeEventListener('abort', onAbort); reject(e); }
+    );
+  });
+}
+
+function sleepWithStop(ms, signal){
+  return new Promise((resolve, reject)=>{
+    if(signal && signal.aborted){ reject(new DOMException('Stopped by user','AbortError')); return; }
+    const t = setTimeout(()=>{ if(signal) signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    function onAbort(){ clearTimeout(t); reject(new DOMException('Stopped by user','AbortError')); }
+    if(signal) signal.addEventListener('abort', onAbort, {once:true});
+  });
+}
+
+async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
   if(systemPrompt === undefined) systemPrompt = SYSTEM;
   const maxAttempts = 4;
   const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
+  const retryableStatus = new Set([429, 500, 502, 503, 529]); // 529 = Anthropic "overloaded"
   for(let attempt=0; attempt<maxAttempts; attempt++){
-    const res = await fetch("https://api.anthropic.com/v1/messages",{
+    // Note: the AbortSignal is deliberately NOT passed into fetch()'s own options here.
+    // Some sandboxed preview environments instrument window.fetch and try to relay the
+    // call via postMessage, which throws because AbortSignal objects can't be cloned that
+    // way. Racing the fetch promise against the signal instead gives the same "Stop" behavior
+    // (the app treats it as stopped immediately) without handing the signal to fetch itself.
+    const fetchPromise = fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
-      signal:signal,
       headers:{
         "content-type":"application/json",
         "x-api-key":key,
@@ -1130,12 +1344,16 @@ async function fetchWithRetry(key, content, systemPrompt, signal){
       },
       body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:systemPrompt, messages:[{role:"user",content}] })
     });
-    if(res.status !== 429 || attempt === maxAttempts-1) return res;
+    const res = await raceWithStop(fetchPromise, signal);
+    if(!retryableStatus.has(res.status) || attempt === maxAttempts-1) return res;
     const retryAfterHeader = res.headers.get('retry-after');
     const waitMs = retryAfterHeader ? (parseFloat(retryAfterHeader)*1000) : delays[Math.min(attempt, delays.length-1)];
-    document.getElementById('runhint').textContent =
-      'Rate limited, waiting ' + Math.round(waitMs/1000) + 's and retrying automatically (attempt ' + (attempt+2) + ' of ' + maxAttempts + ')…';
-    await sleep(waitMs);
+    const hintEl = hintElId ? document.getElementById(hintElId) : null;
+    if(hintEl){
+      const reason = res.status===429 ? 'Rate limited' : 'Anthropic server hiccup (status '+res.status+')';
+      hintEl.textContent = reason+', waiting ' + Math.round(waitMs/1000) + 's and retrying automatically (attempt ' + (attempt+2) + ' of ' + maxAttempts + ')…';
+    }
+    await sleepWithStop(waitMs, signal);
   }
 }
 
@@ -1184,16 +1402,24 @@ async function run(){
     let pagesProcessed = 0;
     let wasTruncated = false;
     let wasStopped = false;
+    let sawSparseText = false;
     if(mode==='pdf'){
       if(files.length===0){ setRunning(false); return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
-      if(typeof PDFLib==='undefined'){ setRunning(false); return showErr("The PDF splitting library did not load. Check your connection and reload the page."); }
+      const readMode = document.getElementById('readMode').value;
+      if(readMode==='images' && typeof PDFLib==='undefined'){ setRunning(false); return showErr("The PDF splitting library did not load. Check your connection and reload the page."); }
 
       outer:
       for(let i=0;i<files.length;i++){
         const f = files[i];
         let batches;
         try{
-          batches = await splitIntoBatches(f.buf, pagesPerBatch);
+          if(readMode==='text'){
+            const r = await splitIntoTextBatches(f.buf, pagesPerBatch);
+            batches = r.batches;
+            if(r.avgCharsPerPage < 15) sawSparseText = true; // likely scanned/image-only PDF, text mode won't work well
+          } else {
+            batches = await splitIntoBatches(f.buf, pagesPerBatch);
+          }
         }catch(splitErr){
           throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
         }
@@ -1206,12 +1432,12 @@ async function run(){
             (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
             'File ' + (i+1) + ' of ' + files.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
             ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
-          const content = [
-            {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
-            {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
-              (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
-          ];
-          const res = await fetchWithRetry(key, content, undefined, mainAbort.signal);
+          const instructionText = "This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
+              (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low.";
+          const content = readMode==='text'
+            ? [ {type:"text",text:instructionText}, {type:"text",text:"PAGE TEXT:\n\n"+batch.text} ]
+            : [ {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}}, {type:"text",text:instructionText} ];
+          const res = await fetchWithRetry(key, content, undefined, mainAbort.signal, 'runhint');
           if(!res.ok){
             const errtxt = await res.text();
             throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
@@ -1232,7 +1458,7 @@ async function run(){
         {type:"text",text:"FRONT-END SPEC TEXT:\n\n"+t},
         {type:"text",text:"Extract the bid requirements as specified."+(proj?(" Project: "+proj):"")}
       ];
-      const res = await fetchWithRetry(key, content, undefined, mainAbort.signal);
+      const res = await fetchWithRetry(key, content, undefined, mainAbort.signal, 'runhint');
       if(!res.ok){
         const errtxt = await res.text();
         throw new Error("API "+res.status+": "+errtxt.slice(0,300));
@@ -1247,6 +1473,8 @@ async function run(){
     merged._testRun = wasTruncated ? { cap: testCap, pagesProcessed } : null;
     lastData = merged;
     render(merged);
+    if(sawSparseText) appendSparseTextWarning();
+    saveToCloud('spec_extraction', merged);
   }catch(e){
     if(e.name==='AbortError'){
       if(pagesProcessed>0 && results.length>0){
@@ -1254,6 +1482,8 @@ async function run(){
         merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
         lastData = merged;
         render(merged);
+        if(sawSparseText) appendSparseTextWarning();
+        saveToCloud('spec_extraction', merged);
       } else {
         document.getElementById('msg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
       }
@@ -1306,7 +1536,7 @@ async function runDrawings(){
           {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
             (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
         ];
-        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAbort.signal);
+        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAbort.signal, 'dwgRunHint');
         if(!res.ok){
           const errtxt = await res.text();
           throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
@@ -1325,6 +1555,7 @@ async function runDrawings(){
     merged._testRun = wasTruncated ? { cap: testCap, pagesProcessed } : null;
     lastDwgData = merged;
     renderDwg(merged);
+    saveToCloud('drawing_extraction', merged);
   }catch(e){
     if(e.name==='AbortError'){
       if(pagesProcessed>0 && results.length>0){
@@ -1332,6 +1563,7 @@ async function runDrawings(){
         merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
         lastDwgData = merged;
         renderDwg(merged);
+        saveToCloud('drawing_extraction', merged);
       } else {
         document.getElementById('dwgMsg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
       }
@@ -1562,10 +1794,15 @@ function cleanErr(m){
     return lead + '<br><span style="font-family:var(--mono);font-size:11.5px;color:var(--muted);display:block;margin-top:6px">Raw API detail: ' + esc(m) + '</span>';
   }
   if(/Failed to fetch|NetworkError/i.test(m)) return "Could not reach the API. Check your connection and that the key is valid.";
+  if(/Internal server error|"type":"api_error"|"type":"overloaded_error"|API (500|502|503|529)/i.test(m)) return "Anthropic's servers had a transient hiccup on this request (not something wrong with your documents or the app). This is usually already retried a few times automatically before you see this. Just try again \u2014 it typically clears up on the next attempt.<br><span style=\"font-family:var(--mono);font-size:11.5px;color:var(--muted);display:block;margin-top:6px\">Raw API detail: " + esc(m) + '</span>';
   return m;
 }
 function showErr(html){
   document.getElementById('msg').innerHTML = `<div class="note err"><b>Hold on.</b> ${html}</div>`;
+}
+function appendSparseTextWarning(){
+  const el = document.getElementById('msg');
+  el.innerHTML += `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00;margin-top:8px"><b>Heads up:</b> one or more of these PDFs had very little extractable text \u2014 that usually means it's scanned or a photograph of a page rather than a digitally created document. Extracted-text mode can't read text that isn't really there, so results from this run may be thin or wrong. Switch <b>Reading mode</b> back to "Page images" and rerun for an accurate pass.</div>`;
 }
 function setRunning(on){
   document.getElementById('run').disabled = on;
@@ -1901,6 +2138,7 @@ async function runMasterCheck(btn){
     }
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
+    saveToCloud('checklist_1', parsed);
   }catch(e){
     console.error(e);
     if(e.name==='AbortError'){
@@ -2118,6 +2356,7 @@ async function runSecondCheck(btn){
     }
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
+    saveToCloud('checklist_2', parsed);
   }catch(e){
     console.error(e);
     if(e.name==='AbortError'){
@@ -2334,6 +2573,7 @@ async function runThirdCheck(btn){
     }
     lastThirdCheck = parsed;
     renderThirdCheck(parsed);
+    saveToCloud('checklist_3', parsed);
   }catch(e){
     console.error(e);
     if(e.name==='AbortError'){
@@ -2551,6 +2791,7 @@ async function runKickoff(){
     if(!parsed){ throw new Error("Could not read the kickoff sheet response. Raw output:\n\n"+text.slice(0,400)); }
     lastKickoff = parsed;
     renderKickoff(parsed);
+    saveToCloud('kickoff_sheet', parsed);
   }catch(e){
     if(e.name==='AbortError'){
       document.getElementById('kickoffMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
