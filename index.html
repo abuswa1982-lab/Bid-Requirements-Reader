@@ -229,6 +229,10 @@
 </style>
 </head>
 <body>
+<div id="cloudFailBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#B4451F;color:#fff;padding:12px 20px;font-size:13.5px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.2)">
+  <span id="cloudFailText"></span>
+  <button onclick="document.getElementById('cloudFailBanner').style.display='none'" style="margin-left:14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer">Dismiss</button>
+</div>
 
 <header class="top">
   <div class="top-inner" style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px">
@@ -284,6 +288,7 @@
     <button id="ptab-bid" class="on" onclick="setPageTab('bid')" type="button">Bid Documents</button>
     <button id="ptab-dwg" onclick="setPageTab('dwg')" type="button">Drawings</button>
     <button id="ptab-kickoff" onclick="setPageTab('kickoff')" type="button">Kickoff Sheet</button>
+    <button id="ptab-ask" onclick="setPageTab('ask')" type="button">Ask</button>
   </div>
 
   <div id="page-bid">
@@ -568,6 +573,40 @@
 
   </div><!-- /page-kickoff -->
 
+  <div id="page-ask" style="display:none">
+
+  <div class="card">
+    <h2>Ask about this project</h2>
+    <p class="hint" style="margin:0 0 10px">This searches only what's already been read for this project in Phase 1 &mdash; the spec extraction, both checklists, drawings, Checklist 3, and the kickoff sheet, whichever of those are currently loaded above. It won't go re-read any documents, and it won't answer from anything outside what's already here. This is a scoped preview of what full Q&amp;A (Phase 5) will eventually do across every phase.</p>
+    <div id="askStatus" style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px"></div>
+  </div>
+
+  <div class="card">
+    <label class="fld" for="askQuestion">Your question</label>
+    <input type="text" id="askQuestion" placeholder="e.g. What's the bonding requirement? When is the bid due? What did the drawings flag as hidden scope?">
+    <div class="runbar" style="margin:12px 0 0">
+      <button class="run" id="askRun" onclick="runAsk()">
+        <span class="spin" id="askSpin"></span><span id="askRunLabel">Ask</span>
+      </button>
+      <button class="stopbtn" id="askRunStop" onclick="stopAsk()" type="button">Stop</button>
+      <span class="hint" id="askRunHint" style="margin:0"></span>
+    </div>
+  </div>
+
+  <div id="askMsg"></div>
+
+  <div id="askResults" style="display:none">
+    <div class="grp">
+      <div class="grp-h"><span class="t">Answer</span></div>
+      <div class="item"><div class="body">
+        <div class="req" id="askAnswerText" style="font-size:14px;line-height:1.6"></div>
+        <div class="meta"><span class="stamp" id="askAnswerSource"></span></div>
+      </div></div>
+    </div>
+  </div>
+
+  </div><!-- /page-ask -->
+
 </div>
 
 <footer>
@@ -590,6 +629,7 @@ let masterCheckAbort = null;
 let secondCheckAbort = null;
 let thirdCheckAbort = null;
 let kickoffAbort = null;
+let askAbort = null;
 
 const ORDER = ["Human Review Items","Risk Flags","Pricing Impacts","Submission Checklist"];
 const WATCH_BUCKETS = new Set(["Human Review Items","Risk Flags"]);
@@ -641,10 +681,22 @@ function cloudStatus(msg, isErr){
 // Fire-and-forget save: never blocks or breaks the tab's own flow if it fails.
 // Silent no-op if the Worker URL or project name hasn't been filled in \u2014 the app
 // behaves exactly as before (browser-memory-only) until someone opts into the cloud panel.
+function showCloudFailBanner(msg){
+  document.getElementById('cloudFailText').textContent = msg;
+  document.getElementById('cloudFailBanner').style.display = 'block';
+}
+
 async function saveToCloud(phase, data){
   const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
   const project = document.getElementById('cloudProject').value.trim();
-  if(!workerUrl || !project) return;
+  if(!project){
+    showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Project name box at the top is empty. Type a project name there now if you want future results saved. Download PDF/Excel on this tab now so this result isn\'t lost.');
+    return;
+  }
+  if(!workerUrl){
+    showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Worker URL box at the top is empty. Download PDF/Excel on this tab now so this result isn\'t lost.');
+    return;
+  }
   try{
     const res = await fetch(workerUrl + '/save', {
       method:'POST',
@@ -655,9 +707,11 @@ async function saveToCloud(phase, data){
       cloudStatus('Saved "'+phase+'" to the cloud just now.');
     } else {
       cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
+      showCloudFailBanner('"'+phase+'" was NOT saved to the cloud (status '+res.status+'). Download PDF/Excel on this tab now so this result isn\'t lost, then check the Worker URL and your connection.');
     }
   }catch(e){
     cloudStatus('Could not reach the Worker to save. Check the Worker URL above. This tab\'s results are still fine locally.', true);
+    showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 could not reach the Worker. This can happen behind a VPN or restrictive network. Download PDF/Excel on this tab now so this result isn\'t lost.');
   }
 }
 
@@ -726,6 +780,7 @@ async function loadCloudProject(btn){
       loaded.push('Kickoff Sheet');
     }
     renderKickoffStatus();
+    renderAskStatus();
     cloudStatus('Loaded from the cloud: ' + loaded.join(', ') + '.');
   }catch(e){
     console.error(e);
@@ -823,10 +878,13 @@ function setPageTab(p){
   document.getElementById('page-bid').style.display = p==='bid'?'block':'none';
   document.getElementById('page-dwg').style.display = p==='dwg'?'block':'none';
   document.getElementById('page-kickoff').style.display = p==='kickoff'?'block':'none';
+  document.getElementById('page-ask').style.display = p==='ask'?'block':'none';
   document.getElementById('ptab-bid').classList.toggle('on', p==='bid');
   document.getElementById('ptab-dwg').classList.toggle('on', p==='dwg');
   document.getElementById('ptab-kickoff').classList.toggle('on', p==='kickoff');
+  document.getElementById('ptab-ask').classList.toggle('on', p==='ask');
   if(p==='kickoff') renderKickoffStatus();
+  if(p==='ask') renderAskStatus();
 }
 
 function setMode(m){
@@ -1322,6 +1380,21 @@ function sleepWithStop(ms, signal){
     if(signal) signal.addEventListener('abort', onAbort, {once:true});
   });
 }
+
+const SYSTEM_ASK = `You are answering one specific question about a construction bid, using ONLY the project data provided to you \u2014 nothing from outside it, nothing assumed, nothing guessed. This is a scoped preview of a larger Q&A feature; it only ever sees what has already been extracted for this one project in Phase 1 (spec extraction, checklist coverage reports, drawing extraction, kickoff sheet), whichever of those happen to be provided.
+
+RULES:
+1. Answer only from what's actually in the provided data. If the answer genuinely isn't in there, say so plainly \u2014 do not guess, infer beyond what's stated, or fill gaps with typical/expected values.
+2. Be direct and concise. Answer the actual question first, in plain language, then add only as much supporting detail as directly helps.
+3. Always say which part of the provided data the answer came from (e.g. "Spec Extraction", "Checklist 1 coverage", "Drawing Extraction").
+4. No em dashes.
+
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "found": true or false,
+  "answer": "the direct answer in plain language, or an explanation of what's missing if not found",
+  "source": "which part(s) of the provided data this came from, or empty string if not found"
+}`;
 
 async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
   if(systemPrompt === undefined) systemPrompt = SYSTEM;
@@ -3015,6 +3088,101 @@ function downloadKickoffPDF(btn){
   }
 }
 
+function renderAskStatus(){
+  const inputs = [
+    { key:'Spec Extraction', ready: !!lastData },
+    { key:'Checklist 1', ready: !!lastMasterCheck },
+    { key:'Checklist 2', ready: !!lastSecondCheck },
+    { key:'Drawing Extraction', ready: !!lastDwgData },
+    { key:'Checklist 3', ready: !!lastThirdCheck },
+    { key:'Kickoff Sheet', ready: !!lastKickoff }
+  ];
+  const el = document.getElementById('askStatus');
+  el.innerHTML = '';
+  inputs.forEach(i=>{
+    const chip = document.createElement('div');
+    chip.className = 'statuschip' + (i.ready?' ready':'');
+    chip.innerHTML = `<span class="dot"></span><span></span>`;
+    chip.querySelector('span:last-child').textContent = i.key + (i.ready ? ' \u2014 loaded' : ' \u2014 not loaded');
+    el.appendChild(chip);
+  });
+}
+
+function setAskRunning(on){
+  document.getElementById('askRun').disabled = on;
+  document.getElementById('askRunStop').classList.toggle('show', on);
+  document.getElementById('askSpin').style.display = on?'inline-block':'none';
+  document.getElementById('askRunLabel').textContent = on?'Thinking\u2026':'Ask';
+  document.getElementById('askRunHint').textContent = on?'Reading whatever is loaded for this project.':'';
+}
+
+function stopAsk(){
+  if(askAbort) askAbort.abort();
+}
+
+function showAskErr(html){
+  document.getElementById('askMsg').innerHTML = `<div class="note err"><b>Hold on.</b> ${html}</div>`;
+}
+
+async function runAsk(){
+  const key = document.getElementById('key').value.trim();
+  const question = document.getElementById('askQuestion').value.trim();
+  document.getElementById('askMsg').innerHTML = '';
+  if(!key){ return showAskErr("Add your Anthropic API key up top first."); }
+  if(!question){ return showAskErr("Type a question first."); }
+  if(!lastData && !lastMasterCheck && !lastSecondCheck && !lastDwgData && !lastThirdCheck && !lastKickoff){
+    return showAskErr("Nothing is loaded for this project yet. Run or load Phase 1 first, on the tabs above.");
+  }
+
+  setAskRunning(true);
+  askAbort = new AbortController();
+  try{
+    const payload = { question, project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
+    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:(lastData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    if(lastMasterCheck) payload.checklist_1_coverage = lastMasterCheck;
+    if(lastSecondCheck) payload.checklist_2_coverage = lastSecondCheck;
+    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:(lastDwgData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    if(lastThirdCheck) payload.checklist_3_coverage = lastThirdCheck;
+    if(lastKickoff) payload.kickoff_sheet = lastKickoff;
+
+    const content = [
+      {type:"text", text:"Here is the currently loaded project data, as JSON:\n\n"+JSON.stringify(payload, null, 2)},
+      {type:"text", text:"Question: "+question},
+      {type:"text", text:"Answer using only the data above. Return the JSON schema only."}
+    ];
+    const res = await fetchWithRetry(key, content, SYSTEM_ASK, askAbort.signal, 'askRunHint');
+    if(!res.ok){
+      const t = await res.text();
+      throw new Error("API "+res.status+": "+t.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    const parsed = parseJSON(text);
+    if(!parsed){ throw new Error("Could not read the answer. Raw output:\n\n"+text.slice(0,400)); }
+    renderAsk(parsed);
+  }catch(e){
+    if(e.name==='AbortError'){
+      document.getElementById('askMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Ask again whenever you\'re ready.</div>';
+    } else {
+      showAskErr(cleanErr(e.message));
+    }
+  }finally{
+    setAskRunning(false);
+  }
+}
+
+function renderAsk(d){
+  document.getElementById('askAnswerText').textContent = d.answer || '(no answer returned)';
+  const sourceEl = document.getElementById('askAnswerSource');
+  if(d.found === false){
+    sourceEl.textContent = 'Not found in what\'s currently loaded';
+  } else {
+    sourceEl.textContent = d.source || '';
+    sourceEl.style.display = d.source ? '' : 'none';
+  }
+  document.getElementById('askResults').style.display = 'block';
+}
+
 function clearProject(btn){
   files = [];
   masterFile = null;
@@ -3066,6 +3234,11 @@ function clearProject(btn){
   document.getElementById('kickoffScorebar').innerHTML = '';
   document.getElementById('kickoffBody').innerHTML = '';
   renderKickoffStatus();
+
+  document.getElementById('askQuestion').value = '';
+  document.getElementById('askResults').style.display = 'none';
+  document.getElementById('askMsg').innerHTML = '';
+  renderAskStatus();
 
   flash(btn);
 }
