@@ -328,6 +328,11 @@
         <input type="text" id="pagesPerBatch" value="5" style="max-width:80px">
         <p class="hint">Each PDF is split into chunks of this many pages, read one chunk at a time, and the findings are locked in and combined at the end. Smaller batches are slower but safer against rate limits; 5 is a good default for dense scanned specs.</p>
       </div>
+      <div class="field" style="margin:14px 0 0">
+        <label class="fld" for="resumeFromPage">Resume from page (optional)</label>
+        <input type="text" id="resumeFromPage" placeholder="leave blank to start from page 1" style="max-width:220px">
+        <p class="hint">If a previous run on this same file broke partway through, it tells you which page to resume from. Type that page number here and run again \u2014 it picks up from there and combines the new findings with what was already read, instead of re-reading everything from the start.</p>
+      </div>
       <div class="field">
         <label class="fld" for="testCap">Test run</label>
         <select id="testCap" style="max-width:220px">
@@ -466,6 +471,11 @@
       <label class="fld" for="dwgPagesPerBatch">Pages per batch</label>
       <input type="text" id="dwgPagesPerBatch" value="5" style="max-width:80px">
       <p class="hint">Same idea as the front-end reader: each PDF is split into chunks of this many pages and read one chunk at a time. Drawing sheets are image-heavy, so smaller batches are usually safer here.</p>
+    </div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="dwgResumeFromPage">Resume from page (optional)</label>
+      <input type="text" id="dwgResumeFromPage" placeholder="leave blank to start from page 1" style="max-width:220px">
+      <p class="hint">If a previous run on this same drawing set broke partway through, it tells you which page to resume from. Type it here and run again \u2014 picks up from there instead of re-reading everything.</p>
     </div>
     <div class="field">
       <label class="fld" for="dwgTestCap">Test run</label>
@@ -1467,12 +1477,15 @@ async function run(){
   const proj = document.getElementById('proj').value.trim();
   const pagesPerBatch = Math.max(1, parseInt(document.getElementById('pagesPerBatch').value,10) || 5);
   const testCap = parseInt(document.getElementById('testCap').value,10) || 0;
+  const resumeFromPage = Math.max(0, parseInt(document.getElementById('resumeFromPage').value,10) || 0);
 
   setRunning(true);
   mainAbort = new AbortController();
   try{
-    const results = [];
-    let pagesProcessed = 0;
+    // Resuming: seed with whatever was already successfully read last time (sitting in lastData
+    // from a prior partial run), instead of throwing it away and re-reading from page 1.
+    const results = (resumeFromPage>1 && lastData) ? [lastData] : [];
+    let pagesProcessed = (resumeFromPage>1 && lastData) ? (resumeFromPage-1) : 0;
     let wasTruncated = false;
     let wasStopped = false;
     let sawSparseText = false;
@@ -1496,6 +1509,9 @@ async function run(){
         }catch(splitErr){
           throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
         }
+        if(resumeFromPage>1){
+          batches = batches.filter(b=>b.endPage >= resumeFromPage);
+        }
         for(let b=0;b<batches.length;b++){
           const batch = batches[b];
           if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
@@ -1518,7 +1534,10 @@ async function run(){
           const data = await res.json();
           const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
           const parsed = parseJSON(text);
-          if(!parsed){ throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400)); }
+          if(!parsed){
+            if(data.stop_reason==='max_tokens') throw new Error("The response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" got cut off before it finished \u2014 it ran out of room mid-answer. This can happen on unusually dense pages. Try running again; if it keeps happening on this same file, try a smaller \u201cPages per batch\u201d setting so each chunk is lighter.");
+            throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400));
+          }
           results.push(parsed);
           pagesProcessed += (batch.endPage - batch.startPage + 1);
           if(testCap && pagesProcessed >= testCap && (i<files.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -1549,17 +1568,18 @@ async function run(){
     if(sawSparseText) appendSparseTextWarning();
     saveToCloud('spec_extraction', merged);
   }catch(e){
-    if(e.name==='AbortError'){
-      if(pagesProcessed>0 && results.length>0){
-        const merged = results.length>1 ? mergeResults(results) : results[0];
-        merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
-        lastData = merged;
-        render(merged);
-        if(sawSparseText) appendSparseTextWarning();
-        saveToCloud('spec_extraction', merged);
-      } else {
-        document.getElementById('msg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
-      }
+    const isAbort = e.name==='AbortError';
+    if(pagesProcessed>0 && results.length>0){
+      const merged = results.length>1 ? mergeResults(results) : results[0];
+      merged._testRun = isAbort
+        ? { cap: null, pagesProcessed, stoppedByUser: true }
+        : { cap: null, pagesProcessed, stoppedByError: true, errorMsg: cleanErr(e.message) };
+      lastData = merged;
+      render(merged);
+      if(sawSparseText) appendSparseTextWarning();
+      saveToCloud('spec_extraction', merged);
+    } else if(isAbort){
+      document.getElementById('msg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
     } else {
       showErr(cleanErr(e.message));
     }
@@ -1575,6 +1595,7 @@ async function runDrawings(){
   const proj = document.getElementById('dwgProj').value.trim();
   const pagesPerBatch = Math.max(1, parseInt(document.getElementById('dwgPagesPerBatch').value,10) || 5);
   const testCap = parseInt(document.getElementById('dwgTestCap').value,10) || 0;
+  const resumeFromPage = Math.max(0, parseInt(document.getElementById('dwgResumeFromPage').value,10) || 0);
 
   if(dwgFiles.length===0){ return showDwgErr("Add at least one drawing set PDF."); }
   if(typeof PDFLib==='undefined'){ return showDwgErr("The PDF splitting library did not load. Check your connection and reload the page."); }
@@ -1582,8 +1603,8 @@ async function runDrawings(){
   setDwgRunning(true);
   dwgAbort = new AbortController();
   try{
-    const results = [];
-    let pagesProcessed = 0;
+    const results = (resumeFromPage>1 && lastDwgData) ? [lastDwgData] : [];
+    let pagesProcessed = (resumeFromPage>1 && lastDwgData) ? (resumeFromPage-1) : 0;
     let wasTruncated = false;
 
     outer:
@@ -1594,6 +1615,9 @@ async function runDrawings(){
         batches = await splitIntoBatches(f.buf, pagesPerBatch);
       }catch(splitErr){
         throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
+      }
+      if(resumeFromPage>1){
+        batches = batches.filter(b=>b.endPage >= resumeFromPage);
       }
       for(let b=0;b<batches.length;b++){
         const batch = batches[b];
@@ -1617,7 +1641,10 @@ async function runDrawings(){
         const data = await res.json();
         const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
         const parsed = parseJSON(text);
-        if(!parsed){ throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400)); }
+        if(!parsed){
+            if(data.stop_reason==='max_tokens') throw new Error("The response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" got cut off before it finished \u2014 it ran out of room mid-answer. This can happen on unusually dense pages. Try running again; if it keeps happening on this same file, try a smaller \u201cPages per batch\u201d setting so each chunk is lighter.");
+            throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400));
+          }
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -1630,16 +1657,17 @@ async function runDrawings(){
     renderDwg(merged);
     saveToCloud('drawing_extraction', merged);
   }catch(e){
-    if(e.name==='AbortError'){
-      if(pagesProcessed>0 && results.length>0){
-        const merged = results.length>1 ? mergeResults(results) : results[0];
-        merged._testRun = { cap: null, pagesProcessed, stoppedByUser: true };
-        lastDwgData = merged;
-        renderDwg(merged);
-        saveToCloud('drawing_extraction', merged);
-      } else {
-        document.getElementById('dwgMsg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
-      }
+    const isAbort = e.name==='AbortError';
+    if(pagesProcessed>0 && results.length>0){
+      const merged = results.length>1 ? mergeResults(results) : results[0];
+      merged._testRun = isAbort
+        ? { cap: null, pagesProcessed, stoppedByUser: true }
+        : { cap: null, pagesProcessed, stoppedByError: true, errorMsg: cleanErr(e.message) };
+      lastDwgData = merged;
+      renderDwg(merged);
+      saveToCloud('drawing_extraction', merged);
+    } else if(isAbort){
+      document.getElementById('dwgMsg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
     } else {
       showDwgErr(cleanErr(e.message));
     }
@@ -1677,7 +1705,11 @@ function renderDwg(d){
   const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
 
   const msgEl = document.getElementById('dwgMsg');
-  if(d._testRun && d._testRun.stoppedByUser){
+  if(d._testRun && d._testRun.stoppedByError){
+    msgEl.innerHTML = `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010">
+      <b>Stopped partway through, on an error.</b> This covers roughly ${d._testRun.pagesProcessed} pages read successfully before it broke &mdash; that work is not lost. What went wrong: ${d._testRun.errorMsg}. To pick up where it left off: type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> above, and run again. It'll combine the rest with what's already here, instead of re-reading from page 1.
+    </div>`;
+  } else if(d._testRun && d._testRun.stoppedByUser){
     msgEl.innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563">
       <b>Stopped by you.</b> This covers roughly ${d._testRun.pagesProcessed} pages read before you clicked Stop, not the full drawing set. Run again for the complete set when you're ready.
     </div>`;
@@ -1903,7 +1935,11 @@ function render(d){
   const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
 
   const msgEl = document.getElementById('msg');
-  if(d._testRun && d._testRun.stoppedByUser){
+  if(d._testRun && d._testRun.stoppedByError){
+    msgEl.innerHTML = `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010">
+      <b>Stopped partway through, on an error.</b> This covers roughly ${d._testRun.pagesProcessed} pages read successfully before it broke &mdash; that work is not lost. What went wrong: ${d._testRun.errorMsg}. To pick up where it left off: type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> above, and run again. It'll combine the rest with what's already here, instead of re-reading from page 1.
+    </div>`;
+  } else if(d._testRun && d._testRun.stoppedByUser){
     msgEl.innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563">
       <b>Stopped by you.</b> This covers roughly ${d._testRun.pagesProcessed} pages read before you clicked Stop, not the full document. Run again for the complete document when you're ready.
     </div>`;
@@ -3191,6 +3227,7 @@ function clearProject(btn){
   lastMasterCheck = null;
   lastSecondCheck = null;
   document.getElementById('proj').value = '';
+  document.getElementById('resumeFromPage').value = '';
   document.getElementById('text').value = '';
   document.getElementById('file').value = '';
   document.getElementById('masterFile').value = '';
@@ -3215,6 +3252,7 @@ function clearProject(btn){
   thirdFile = null;
   lastThirdCheck = null;
   document.getElementById('dwgProj').value = '';
+  document.getElementById('dwgResumeFromPage').value = '';
   document.getElementById('dwgFile').value = '';
   renderDwgFiles();
   document.getElementById('dwgResults').style.display = 'none';
