@@ -913,9 +913,20 @@ drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
 drop.addEventListener('drop', e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)});
 fileInput.addEventListener('change', e=>{addFiles(e.target.files); e.target.value='';});
 
+// Some browsers/OSes don't reliably set a dropped/selected file's MIME type to
+// application/pdf even when it genuinely is one (depends on how it was saved,
+// exported, or downloaded). Falling back to the file extension prevents a real
+// PDF from being silently rejected with zero explanation.
+function isPdfFile(f){
+  return f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+}
+
 function addFiles(list){
   [...list].forEach(f=>{
-    if(f.type!=='application/pdf'){return}
+    if(!isPdfFile(f)){
+      document.getElementById('msg').innerHTML = `<div class="note err"><b>Hold on.</b> "${f.name}" doesn't look like a PDF (got type "${f.type||'unknown'}"). Only .pdf files can be attached here.</div>`;
+      return;
+    }
     const reader = new FileReader();
     reader.onload = ()=>{
       files.push({name:f.name, size:f.size, buf: reader.result});
@@ -945,8 +956,11 @@ masterDrop.addEventListener('drop', e=>{e.preventDefault();masterDrop.classList.
 masterFileInput.addEventListener('change', e=>{addMasterFile(e.target.files); e.target.value='';});
 
 function addMasterFile(list){
-  const f = [...list].find(f=>f.type==='application/pdf');
-  if(!f) return;
+  const f = [...list].find(isPdfFile);
+  if(!f){
+    if(list.length) document.getElementById('msg').innerHTML = `<div class="note err"><b>Hold on.</b> That doesn't look like a PDF. Only .pdf files can be attached here.</div>`;
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ()=>{
     masterFile = {name:f.name, size:f.size, buf: reader.result};
@@ -988,8 +1002,11 @@ secondDrop.addEventListener('drop', e=>{e.preventDefault();secondDrop.classList.
 secondFileInput.addEventListener('change', e=>{addSecondFile(e.target.files); e.target.value='';});
 
 function addSecondFile(list){
-  const f = [...list].find(f=>f.type==='application/pdf');
-  if(!f) return;
+  const f = [...list].find(isPdfFile);
+  if(!f){
+    if(list.length) document.getElementById('msg').innerHTML = `<div class="note err"><b>Hold on.</b> That doesn't look like a PDF. Only .pdf files can be attached here.</div>`;
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ()=>{
     secondFile = {name:f.name, size:f.size, buf: reader.result};
@@ -1031,8 +1048,11 @@ thirdDrop.addEventListener('drop', e=>{e.preventDefault();thirdDrop.classList.re
 thirdFileInput.addEventListener('change', e=>{addThirdFile(e.target.files); e.target.value='';});
 
 function addThirdFile(list){
-  const f = [...list].find(f=>f.type==='application/pdf');
-  if(!f) return;
+  const f = [...list].find(isPdfFile);
+  if(!f){
+    if(list.length) document.getElementById('dwgMsg').innerHTML = `<div class="note err"><b>Hold on.</b> That doesn't look like a PDF. Only .pdf files can be attached here.</div>`;
+    return;
+  }
   const reader = new FileReader();
   reader.onload = ()=>{
     thirdFile = {name:f.name, size:f.size, buf: reader.result};
@@ -1067,7 +1087,10 @@ let lastDwgData = null;
 
 function addDwgFiles(list){
   [...list].forEach(f=>{
-    if(f.type!=='application/pdf'){return}
+    if(!isPdfFile(f)){
+      document.getElementById('dwgMsg').innerHTML = `<div class="note err"><b>Hold on.</b> "${f.name}" doesn't look like a PDF (got type "${f.type||'unknown'}"). Only .pdf files can be attached here.</div>`;
+      return;
+    }
     const reader = new FileReader();
     reader.onload = ()=>{
       dwgFiles.push({name:f.name, size:f.size, buf: reader.result});
