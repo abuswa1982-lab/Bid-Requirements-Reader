@@ -1509,6 +1509,7 @@ async function run(){
     // from a prior partial run), instead of throwing it away and re-reading from page 1.
     const results = (resumeFromPage>1 && lastData) ? [lastData] : [];
     let pagesProcessed = (resumeFromPage>1 && lastData) ? (resumeFromPage-1) : 0;
+    let lastCheckpointPages = pagesProcessed;
     let wasTruncated = false;
     let wasStopped = false;
     let sawSparseText = false;
@@ -1564,6 +1565,12 @@ async function run(){
           results.push(parsed);
           pagesProcessed += (batch.endPage - batch.startPage + 1);
           if(testCap && pagesProcessed >= testCap && (i<files.length-1 || b<batches.length-1)) wasTruncated = true;
+          if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
+            lastCheckpointPages = pagesProcessed;
+            const checkpoint = results.length>1 ? mergeResults(results) : results[0];
+            checkpoint._testRun = { cap:null, pagesProcessed, checkpoint:true };
+            saveToCloud('spec_extraction', checkpoint); // fire-and-forget; doesn't block the loop
+          }
         }
       }
     } else {
@@ -1628,6 +1635,7 @@ async function runDrawings(){
   try{
     const results = (resumeFromPage>1 && lastDwgData) ? [lastDwgData] : [];
     let pagesProcessed = (resumeFromPage>1 && lastDwgData) ? (resumeFromPage-1) : 0;
+    let lastCheckpointPages = pagesProcessed;
     let wasTruncated = false;
 
     outer:
@@ -1671,6 +1679,12 @@ async function runDrawings(){
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
+        if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
+          lastCheckpointPages = pagesProcessed;
+          const checkpoint = results.length>1 ? mergeResults(results) : results[0];
+          checkpoint._testRun = { cap:null, pagesProcessed, checkpoint:true };
+          saveToCloud('drawing_extraction', checkpoint); // fire-and-forget; doesn't block the loop
+        }
       }
     }
 
@@ -1728,7 +1742,11 @@ function renderDwg(d){
   const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
 
   const msgEl = document.getElementById('dwgMsg');
-  if(d._testRun && d._testRun.stoppedByError){
+  if(d._testRun && d._testRun.checkpoint){
+    msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
+      <b>This is a checkpoint, not a finished run.</b> This is the most recently auto-saved progress \u2014 roughly ${d._testRun.pagesProcessed} pages read so far. If the original run is still going elsewhere, let it finish. If it crashed or was interrupted, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> and run again to pick up from here.
+    </div>`;
+  } else if(d._testRun && d._testRun.stoppedByError){
     msgEl.innerHTML = `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010">
       <b>Stopped partway through, on an error.</b> This covers roughly ${d._testRun.pagesProcessed} pages read successfully before it broke &mdash; that work is not lost. What went wrong: ${d._testRun.errorMsg}. To pick up where it left off: type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> above, and run again. It'll combine the rest with what's already here, instead of re-reading from page 1.
     </div>`;
@@ -1958,7 +1976,11 @@ function render(d){
   const bandColor = overall==='RED' ? '#B4451F' : overall==='YELLOW' ? '#B8860B' : '#2E7D57';
 
   const msgEl = document.getElementById('msg');
-  if(d._testRun && d._testRun.stoppedByError){
+  if(d._testRun && d._testRun.checkpoint){
+    msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
+      <b>This is a checkpoint, not a finished run.</b> This is the most recently auto-saved progress \u2014 roughly ${d._testRun.pagesProcessed} pages read so far. If the original run is still going elsewhere, let it finish. If it crashed or was interrupted, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> and run again to pick up from here.
+    </div>`;
+  } else if(d._testRun && d._testRun.stoppedByError){
     msgEl.innerHTML = `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010">
       <b>Stopped partway through, on an error.</b> This covers roughly ${d._testRun.pagesProcessed} pages read successfully before it broke &mdash; that work is not lost. What went wrong: ${d._testRun.errorMsg}. To pick up where it left off: type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> above, and run again. It'll combine the rest with what's already here, instead of re-reading from page 1.
     </div>`;
