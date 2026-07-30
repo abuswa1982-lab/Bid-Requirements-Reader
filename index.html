@@ -276,7 +276,9 @@
     </div>
     <div class="field">
       <label class="fld" for="cloudProject">Project name</label>
-      <input type="text" id="cloudProject" placeholder="e.g. Erie County Health Lab, Building 17 RTU Replacement">
+      <input type="text" id="cloudProject" list="projectSuggestions" placeholder="e.g. Erie County Health Lab, Building 17 RTU Replacement">
+      <datalist id="projectSuggestions"></datalist>
+      <p class="hint" id="projectSuggestHint" style="margin-top:4px"></p>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn2 primary" onclick="loadCloudProject(this)" type="button">Load Project</button>
@@ -316,13 +318,8 @@
       <div class="note" style="display:none;background:#E7F0F8;border:1px solid #CBDDEE;color:#16304B" id="sizewarn">
         <b>Large file detected.</b> This tool now splits big PDFs into small page batches automatically before sending, so this will just take longer, not fail. No action needed.
       </div>
-      <div class="field" style="margin:14px 0 0">
-        <label class="fld" for="readMode">Reading mode</label>
-        <select id="readMode" style="max-width:340px">
-          <option value="images">Page images (default — needed for scanned/graphic PDFs)</option>
-          <option value="text">Extracted text (faster & cheaper — for typed/digital specs)</option>
-        </select>
-        <p class="hint">Extracted text pulls the actual text out of the PDF in your browser, for free, and sends that instead of a picture of each page — usually meaningfully cheaper for text-heavy specs. Only use it if the PDF was created digitally (not scanned): scanned or photographed pages have no text to pull out, and this mode won't work for them. If unsure, leave it on Page images.</p>
+      <div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B;margin:14px 0 0">
+        <b>This tab reads by extracting text</b>, not by sending page images \u2014 faster and meaningfully cheaper for typed/digital specs. It only works on digitally created PDFs; a scanned or photographed document has no text to pull out. If you ever need to read a scanned document, that still works normally on the Drawings tab.
       </div>
       <div class="field" style="margin:14px 0 0">
         <label class="fld" for="pagesPerBatch">Pages per batch</label>
@@ -335,21 +332,9 @@
         <p class="hint">If a previous run on this same file broke partway through, it tells you which page to resume from. Type that page number here and run again \u2014 it picks up from there and combines the new findings with what was already read, instead of re-reading everything from the start.</p>
       </div>
       <div class="field">
-        <label class="fld" for="testCap">Test run</label>
-        <select id="testCap" style="max-width:220px">
-          <option value="0">Full document</option>
-          <option value="5" selected>Just test — first 5 pages (quickest)</option>
-          <option value="10">Just test — first 10 pages</option>
-          <option value="15">Just test — first 15 pages</option>
-          <option value="20">Just test — first 20 pages</option>
-          <option value="50">Just test — first 50 pages</option>
-        </select>
-        <p class="hint">Pick a page count to preview the output fast on a slice of the document before committing to a full run on the whole thing. Stops once that many pages have been processed, across your uploaded files in order. The result is clearly labeled as a partial test, not a complete checklist. Defaults to 5 pages, the fastest way to check formatting works before running the whole thing.</p>
-      </div>
-      <div class="field">
         <label class="fld" for="autoStopPage">Auto-stop after page (optional, for deliberately chunking a huge document)</label>
         <input type="text" id="autoStopPage" placeholder="e.g. 250" style="max-width:220px">
-        <p class="hint">Not a test \u2014 this is for working through a genuinely large document in planned chunks instead of one long unattended run. Set this to 250, run it, let it stop itself cleanly at the nearest finished batch, review the result, then use <b>Resume from page</b> for the next chunk. If set, this overrides the Test run dropdown above.</p>
+        <p class="hint">Leave empty to read straight through the whole document. Set this to work through a genuinely large document in planned chunks instead of one long unattended run: set it to 250, run it, let it stop itself cleanly at the nearest finished batch, review the result, then use <b>Resume from page</b> for the next chunk.</p>
       </div>
       <p class="hint">Upload the <b>front-end sections</b>: Instructions to Bidders, Bid Form, Division 00 (including the Agreement/AIA form and General/Supplementary Conditions), Division 01, and addenda. Leaving out the Agreement and Conditions sections is the most common way insurance, bonding, and liquidated-damages items get missed. Drawings and their keynotes come in a later version. Upload one merged PDF or several separate files, either works, the tool now batches automatically either way.</p>
     </div>
@@ -731,6 +716,35 @@ function showCloudFailBanner(msg){
   document.getElementById('cloudFailBanner').style.display = 'block';
 }
 
+let projectSuggestionsLoaded = false;
+
+async function refreshProjectSuggestions(){
+  const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
+  if(!workerUrl) return;
+  try{
+    const res = await fetch(workerUrl + '/projects');
+    if(!res.ok) return;
+    const body = await res.json();
+    const names = (body.results||[]).map(r=>r.project_name).filter(Boolean);
+    const list = document.getElementById('projectSuggestions');
+    list.innerHTML = '';
+    names.forEach(name=>{
+      const opt = document.createElement('option');
+      opt.value = name;
+      list.appendChild(opt);
+    });
+    const hintEl = document.getElementById('projectSuggestHint');
+    hintEl.textContent = names.length ? ('Start typing to see suggestions from '+names.length+' saved project'+(names.length===1?'':'s')+'.') : '';
+    projectSuggestionsLoaded = true;
+  }catch(e){
+    // Silent on purpose: suggestions are a convenience, not a required feature, and
+    // shouldn't throw a scary error just because the list couldn't be fetched.
+  }
+}
+
+// Load suggestions once automatically, since the Worker URL is pre-filled by default.
+refreshProjectSuggestions();
+
 async function saveToCloud(phase, data){
   const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
   const project = document.getElementById('cloudProject').value.trim();
@@ -750,6 +764,7 @@ async function saveToCloud(phase, data){
     });
     if(res.ok){
       cloudStatus('Saved "'+phase+'" to the cloud just now.');
+      refreshProjectSuggestions(); // pick up a brand-new project name, fire-and-forget
     } else {
       cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
       showCloudFailBanner('"'+phase+'" was NOT saved to the cloud (status '+res.status+'). Download PDF/Excel on this tab now so this result isn\'t lost, then check the Worker URL and your connection.');
@@ -1537,7 +1552,7 @@ async function run(){
   const proj = document.getElementById('proj').value.trim();
   const pagesPerBatch = Math.max(1, parseInt(document.getElementById('pagesPerBatch').value,10) || 5);
   const autoStopPage = parseInt(document.getElementById('autoStopPage').value,10) || 0;
-  const testCap = autoStopPage || (parseInt(document.getElementById('testCap').value,10) || 0);
+  const testCap = autoStopPage;
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('resumeFromPage').value,10) || 0);
 
   setRunning(true);
@@ -1553,21 +1568,15 @@ async function run(){
     let sawSparseText = false;
     if(mode==='pdf'){
       if(files.length===0){ setRunning(false); return showErr("Add at least one front-end PDF, or switch to <b>Paste text</b>."); }
-      const readMode = document.getElementById('readMode').value;
-      if(readMode==='images' && typeof PDFLib==='undefined'){ setRunning(false); return showErr("The PDF splitting library did not load. Check your connection and reload the page."); }
 
       outer:
       for(let i=0;i<files.length;i++){
         const f = files[i];
         let batches;
         try{
-          if(readMode==='text'){
-            const r = await splitIntoTextBatches(f.buf, pagesPerBatch);
-            batches = r.batches;
-            if(r.avgCharsPerPage < 15) sawSparseText = true; // likely scanned/image-only PDF, text mode won't work well
-          } else {
-            batches = await splitIntoBatches(f.buf, pagesPerBatch);
-          }
+          const r = await splitIntoTextBatches(f.buf, pagesPerBatch);
+          batches = r.batches;
+          if(r.avgCharsPerPage < 15) sawSparseText = true; // likely scanned/image-only PDF, text extraction won't work well
         }catch(splitErr){
           throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
         }
@@ -1580,14 +1589,12 @@ async function run(){
           const displayTotalPages = testCap ? Math.min(testCap, batch.totalPages) : batch.totalPages;
           const displayTotalBatches = testCap ? Math.min(batches.length, Math.ceil(testCap / pagesPerBatch)) : batches.length;
           document.getElementById('runhint').textContent =
-            (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
+            (testCap ? 'Stopping at page '+testCap+': ' : '') +
             'File ' + (i+1) + ' of ' + files.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
             ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
           const instructionText = "This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
               (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low.";
-          const content = readMode==='text'
-            ? [ {type:"text",text:instructionText}, {type:"text",text:"PAGE TEXT:\n\n"+batch.text} ]
-            : [ {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}}, {type:"text",text:instructionText} ];
+          const content = [ {type:"text",text:instructionText}, {type:"text",text:"PAGE TEXT:\n\n"+batch.text} ];
           const res = await fetchWithRetry(key, content, undefined, mainAbort.signal, 'runhint');
           if(!res.ok){
             const errtxt = await res.text();
