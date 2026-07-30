@@ -244,7 +244,7 @@
       <h1>Bid Requirements Reader</h1>
       <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
     </div>
-    <button class="btn2" style="white-space:nowrap;margin-top:2px" onclick="clearProject(this)" title="Clears the uploaded bid and both results. Your API key and Master Checklist reference stay put.">Clear Project</button>
+    <button class="btn2" style="white-space:nowrap;margin-top:2px" onclick="clearProject(this)" title="Clears the uploaded bid and both results. Your API key and Checklist 1 reference stay put.">Clear Project</button>
   </div>
 </header>
 
@@ -345,6 +345,11 @@
         </select>
         <p class="hint">Pick a page count to preview the output fast on a slice of the document before committing to a full run on the whole thing. Stops once that many pages have been processed, across your uploaded files in order. The result is clearly labeled as a partial test, not a complete checklist. Defaults to 5 pages, the fastest way to check formatting works before running the whole thing.</p>
       </div>
+      <div class="field">
+        <label class="fld" for="autoStopPage">Auto-stop after page (optional, for deliberately chunking a huge document)</label>
+        <input type="text" id="autoStopPage" placeholder="e.g. 250" style="max-width:220px">
+        <p class="hint">Not a test \u2014 this is for working through a genuinely large document in planned chunks instead of one long unattended run. Set this to 250, run it, let it stop itself cleanly at the nearest finished batch, review the result, then use <b>Resume from page</b> for the next chunk. If set, this overrides the Test run dropdown above.</p>
+      </div>
       <p class="hint">Upload the <b>front-end sections</b>: Instructions to Bidders, Bid Form, Division 00 (including the Agreement/AIA form and General/Supplementary Conditions), Division 01, and addenda. Leaving out the Agreement and Conditions sections is the most common way insurance, bonding, and liquidated-damages items get missed. Drawings and their keynotes come in a later version. Upload one merged PDF or several separate files, either works, the tool now batches automatically either way.</p>
     </div>
 
@@ -355,22 +360,22 @@
   </div>
 
   <div class="card">
-    <h2>Master Checklist (reference, for step 2)</h2>
-    <p class="hint" style="margin:0 0 10px">Set this up once. It doesn't do anything on its own, it just sits here ready. After Step 1 finishes below, a "Check Against Master List" button appears that reads this and compares it against the checklist, flagging anything missing, in one step.</p>
+    <h2>Checklist 1 (reference, for step 2)</h2>
+    <p class="hint" style="margin:0 0 10px">Set this up once. It doesn't do anything on its own, it just sits here ready. After Step 1 finishes below, a "Check Against Checklist 1" button appears that reads this and compares it against the checklist, flagging anything missing, in one step.</p>
     <div class="toggle">
       <button id="master-tab-pdf" class="on" onclick="setMasterMode('pdf')" type="button">Upload PDF</button>
       <button id="master-tab-text" onclick="setMasterMode('text')" type="button">Paste text</button>
     </div>
     <div id="master-mode-pdf">
       <div class="drop" id="masterDrop">
-        <div class="big">Drop the Master Checklist PDF here</div>
+        <div class="big">Drop the Checklist 1 PDF here</div>
         <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
       </div>
       <input type="file" id="masterFile" accept="application/pdf" style="display:none">
       <div class="filelist" id="masterFilelist"></div>
     </div>
     <div id="master-mode-text" style="display:none">
-      <textarea id="masterChecklist" placeholder="Paste your Master Checklist reference text here, once. It stays saved on this device if you check the box below." style="min-height:110px"></textarea>
+      <textarea id="masterChecklist" placeholder="Paste your Checklist 1 reference text here, once. It stays saved on this device if you check the box below." style="min-height:110px"></textarea>
     </div>
     <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
       <input type="checkbox" id="rememberMaster" style="width:15px;height:15px;margin:0;cursor:pointer">
@@ -420,7 +425,7 @@
       <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
       <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
-      <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Master List</button>
+      <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 1</button>
       <button class="stopbtn" id="masterCheckStop" onclick="stopMasterCheck()" type="button">Stop</button>
       <button class="btn2" id="secondCheckBtn" onclick="runSecondCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 2</button>
       <button class="stopbtn" id="secondCheckStop" onclick="stopSecondCheck()" type="button">Stop</button>
@@ -1499,7 +1504,8 @@ async function run(){
   if(!key){ return showErr("Add your Anthropic API key up top first."); }
   const proj = document.getElementById('proj').value.trim();
   const pagesPerBatch = Math.max(1, parseInt(document.getElementById('pagesPerBatch').value,10) || 5);
-  const testCap = parseInt(document.getElementById('testCap').value,10) || 0;
+  const autoStopPage = parseInt(document.getElementById('autoStopPage').value,10) || 0;
+  const testCap = autoStopPage || (parseInt(document.getElementById('testCap').value,10) || 0);
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('resumeFromPage').value,10) || 0);
 
   setRunning(true);
@@ -2079,7 +2085,7 @@ function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','
 
 function fname(d,ext){
   const base=(d.project||document.getElementById('proj').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
-  return base+'-bid-requirements.'+ext;
+  return base+'-ai-overview-of-the-specs.'+ext;
 }
 function orderedRows(d){
   const byCat=groupByCat(d.items||[]);
@@ -2239,12 +2245,12 @@ async function runMasterCheck(btn){
   const masterText = document.getElementById('masterChecklist').value.trim();
   if(usingPdf && !masterFile){
     document.getElementById('masterMsg').innerHTML =
-      '<div class="note err"><b>Hold on.</b> Attach your Master Checklist PDF above first, or switch to <b>Paste text</b>.</div>';
+      '<div class="note err"><b>Hold on.</b> Attach your Checklist 1 PDF above first, or switch to <b>Paste text</b>.</div>';
     return;
   }
   if(!usingPdf && !masterText){
     document.getElementById('masterMsg').innerHTML =
-      '<div class="note err"><b>Hold on.</b> Paste your Master Checklist reference text first, or switch to <b>Upload PDF</b>.</div>';
+      '<div class="note err"><b>Hold on.</b> Paste your Checklist 1 reference text first, or switch to <b>Upload PDF</b>.</div>';
     return;
   }
   const key = document.getElementById('key').value.trim();
@@ -2317,7 +2323,7 @@ function renderMasterCheck(d){
   const s = document.getElementById('masterCheckSummary');
   s.innerHTML = `
     <div class="proj">
-      <div class="pl">Master Checklist Coverage</div>
+      <div class="pl">Checklist 1 Coverage</div>
       <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
     </div>
     <div class="stat"><div class="n">${covered.length}</div><div class="l">Covered</div></div>
@@ -2350,7 +2356,7 @@ function copyMasterCheckText(btn){
   if(!lastMasterCheck) return;
   try{
     const d = lastMasterCheck;
-    let out = 'MASTER CHECKLIST COVERAGE\n' + (d.summary||'') + '\n\n';
+    let out = 'CHECKLIST 1 COVERAGE\n' + (d.summary||'') + '\n\n';
     ['Missing','Covered','Not Applicable'].forEach(label=>{
       const list = (d.coverage||[]).filter(i=>i.status===label);
       if(!list.length) return;
@@ -2367,7 +2373,7 @@ function copyMasterCheckText(btn){
 
 function masterCheckFname(ext){
   const base=((lastData&&lastData.project)||document.getElementById('proj').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
-  return base+'-master-checklist-coverage.'+ext;
+  return base+'-checklist-1-coverage.'+ext;
 }
 
 function downloadMasterCheckExcel(btn){
@@ -2376,7 +2382,7 @@ function downloadMasterCheckExcel(btn){
   try{
     const d = lastMasterCheck;
     const rows = [
-      ['Master Checklist Coverage'],
+      ['Checklist 1 Coverage'],
       ['Summary', d.summary||''],
       [],
       ['Status','Master Item','Note']
@@ -2389,7 +2395,7 @@ function downloadMasterCheckExcel(btn){
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Master Checklist Coverage');
+    XLSX.utils.book_append_sheet(wb, ws, 'Checklist 1 Coverage');
     XLSX.writeFile(wb, masterCheckFname('xlsx'));
     flash(btn);
   }catch(e){
@@ -2408,7 +2414,7 @@ function downloadMasterCheckPDF(btn){
     const M=40; const maxW=612-2*M; let y=50;
 
     doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
-    doc.text('Master Checklist Coverage', M, y); y+=20;
+    doc.text('Checklist 1 Coverage', M, y); y+=20;
     if(d.summary){
       doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,90,90);
       const lines = doc.splitTextToSize(d.summary, maxW);
@@ -3273,6 +3279,7 @@ function clearProject(btn){
   lastSecondCheck = null;
   document.getElementById('proj').value = '';
   document.getElementById('resumeFromPage').value = '';
+  document.getElementById('autoStopPage').value = '';
   document.getElementById('text').value = '';
   document.getElementById('file').value = '';
   document.getElementById('masterFile').value = '';
