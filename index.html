@@ -289,6 +289,7 @@
     <button id="ptab-dwg" onclick="setPageTab('dwg')" type="button">Drawings</button>
     <button id="ptab-kickoff" onclick="setPageTab('kickoff')" type="button">Kickoff Sheet</button>
     <button id="ptab-ask" onclick="setPageTab('ask')" type="button">Ask</button>
+    <button id="ptab-pick" onclick="setPageTab('pick')" type="button">Page Picker</button>
   </div>
 
   <div id="page-bid">
@@ -622,6 +623,35 @@
 
   </div><!-- /page-ask -->
 
+  <div id="page-pick" style="display:none">
+
+  <div class="card">
+    <h2>Page Picker</h2>
+    <p class="hint" style="margin:0 0 10px">Pull just the pages you actually want out of a big PDF, before uploading anything to Bid Documents or Drawings. Upload a file, type which pages you need, and this hands you back a brand new, smaller PDF containing only those pages, in that order &mdash; nothing here touches the AI or costs anything, it's just rearranging pages.</p>
+    <div class="drop" id="pickDrop">
+      <div class="big">Drop a PDF here</div>
+      <div class="small">or click to choose</div>
+    </div>
+    <input type="file" id="pickFile" accept="application/pdf" style="display:none">
+    <div class="filelist" id="pickFilelist"></div>
+  </div>
+
+  <div class="card">
+    <label class="fld" for="pickRanges">Which pages do you want?</label>
+    <input type="text" id="pickRanges" placeholder="e.g. 1-10, 20-30, 45">
+    <p class="hint">Single pages, ranges, or a mix, separated by commas. Order matters &mdash; the new PDF comes out in the order you list them here, not necessarily the original order.</p>
+    <div class="runbar" style="margin:12px 0 0">
+      <button class="run" id="pickRun" onclick="runPagePicker()">
+        <span class="spin" id="pickSpin"></span><span id="pickRunLabel">Extract these pages</span>
+      </button>
+      <span class="hint" id="pickRunHint" style="margin:0"></span>
+    </div>
+  </div>
+
+  <div id="pickMsg"></div>
+
+  </div><!-- /page-pick -->
+
 </div>
 
 <footer>
@@ -894,10 +924,12 @@ function setPageTab(p){
   document.getElementById('page-dwg').style.display = p==='dwg'?'block':'none';
   document.getElementById('page-kickoff').style.display = p==='kickoff'?'block':'none';
   document.getElementById('page-ask').style.display = p==='ask'?'block':'none';
+  document.getElementById('page-pick').style.display = p==='pick'?'block':'none';
   document.getElementById('ptab-bid').classList.toggle('on', p==='bid');
   document.getElementById('ptab-dwg').classList.toggle('on', p==='dwg');
   document.getElementById('ptab-kickoff').classList.toggle('on', p==='kickoff');
   document.getElementById('ptab-ask').classList.toggle('on', p==='ask');
+  document.getElementById('ptab-pick').classList.toggle('on', p==='pick');
   if(p==='kickoff') renderKickoffStatus();
   if(p==='ask') renderAskStatus();
 }
@@ -1762,7 +1794,7 @@ function renderDwg(d){
     </div>`;
   } else if(d._testRun){
     msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
-      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the drawing set's pages (your ${d._testRun.cap}-page test cap). Switch <b>Test run</b> back to "Full document" and rerun when you're ready for the real pass.
+      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the drawing set's pages (your ${d._testRun.cap}-page cap). If this was just a quick preview, switch <b>Test run</b> back to "Full document" and rerun from scratch. If you're deliberately working through a huge document in planned chunks, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> instead, clear the cap, and run again to continue from here \u2014 don't restart from page 1.
     </div>`;
   } else {
     msgEl.innerHTML='';
@@ -1996,7 +2028,7 @@ function render(d){
     </div>`;
   } else if(d._testRun){
     msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
-      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page test cap). This is a preview to check formatting and quality, not a full checklist. Switch <b>Test run</b> back to "Full document" and rerun when you're ready for the real pass.
+      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page cap). If this was just a quick preview, switch <b>Test run</b> back to "Full document" and rerun from scratch. If you're deliberately working through a huge document in planned chunks, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> instead, clear the cap, and run again to continue from here \u2014 don't restart from page 1.
     </div>`;
   } else {
     msgEl.innerHTML='';
@@ -3268,6 +3300,117 @@ function renderAsk(d){
     sourceEl.style.display = d.source ? '' : 'none';
   }
   document.getElementById('askResults').style.display = 'block';
+}
+
+let pickFileData = null; // {name, size, buf}
+
+const pickDrop = document.getElementById('pickDrop');
+const pickFileInput = document.getElementById('pickFile');
+pickDrop.addEventListener('click', ()=>pickFileInput.click());
+pickDrop.addEventListener('dragover', e=>{e.preventDefault();pickDrop.classList.add('over')});
+pickDrop.addEventListener('dragleave', ()=>pickDrop.classList.remove('over'));
+pickDrop.addEventListener('drop', e=>{e.preventDefault();pickDrop.classList.remove('over');addPickFile(e.dataTransfer.files)});
+pickFileInput.addEventListener('change', e=>{addPickFile(e.target.files); e.target.value='';});
+
+function addPickFile(list){
+  const f = [...list].find(isPdfFile);
+  if(!f){
+    if(list.length) document.getElementById('pickMsg').innerHTML = `<div class="note err"><b>Hold on.</b> That doesn't look like a PDF. Only .pdf files can be attached here.</div>`;
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    pickFileData = {name:f.name, size:f.size, buf: reader.result};
+    renderPickFile();
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function renderPickFile(){
+  const el = document.getElementById('pickFilelist');
+  el.innerHTML = '';
+  if(!pickFileData) return;
+  const kb = pickFileData.size>1048576 ? (pickFileData.size/1048576).toFixed(1)+' MB' : Math.round(pickFileData.size/1024)+' KB';
+  const d = document.createElement('div');
+  d.className='filepill';
+  d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">\u2715</span>`;
+  d.querySelector('.nm').textContent = pickFileData.name;
+  d.querySelector('.x').onclick = ()=>{pickFileData=null;renderPickFile()};
+  el.appendChild(d);
+}
+
+// Parses strings like "1-10, 20-30, 45" into an ordered list of page numbers (1-indexed).
+// Order and duplicates in the typed input are preserved as-typed (first occurrence wins on dupes),
+// since the whole point of this tool is letting the person control the resulting page order.
+function parsePageRanges(str, maxPages){
+  const parts = str.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!parts.length) throw new Error("Type which pages you want, e.g. 1-10, 20-30");
+  const pages = [];
+  for(const part of parts){
+    const range = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if(range){
+      let a = parseInt(range[1],10), b = parseInt(range[2],10);
+      if(a>b){ const t=a; a=b; b=t; }
+      for(let p=a; p<=b; p++) pages.push(p);
+    } else if(/^\d+$/.test(part)){
+      pages.push(parseInt(part,10));
+    } else {
+      throw new Error("Could not understand \""+part+"\". Use page numbers or ranges like 1-10, separated by commas.");
+    }
+  }
+  const seen = new Set();
+  const result = [];
+  for(const p of pages){
+    if(p<1 || p>maxPages) throw new Error("Page "+p+" is out of range \u2014 this document only has "+maxPages+" pages.");
+    if(!seen.has(p)){ seen.add(p); result.push(p); }
+  }
+  if(!result.length) throw new Error("No valid pages found. Type something like: 1-10, 20-30");
+  return result;
+}
+
+async function runPagePicker(){
+  document.getElementById('pickMsg').innerHTML = '';
+  if(!pickFileData){ document.getElementById('pickMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Attach a PDF above first.</div>'; return; }
+  const rangeStr = document.getElementById('pickRanges').value.trim();
+  if(!rangeStr){ document.getElementById('pickMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Type which pages you want first, e.g. 1-10, 20-30.</div>'; return; }
+  if(typeof PDFLib==='undefined'){ document.getElementById('pickMsg').innerHTML = '<div class="note err"><b>Hold on.</b> The PDF library did not load. Check your connection and reload the page.</div>'; return; }
+
+  const btn = document.getElementById('pickRun');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  document.getElementById('pickRunLabel').textContent = 'Extracting\u2026';
+  document.getElementById('pickSpin').style.display = 'inline-block';
+
+  try{
+    const srcDoc = await PDFLib.PDFDocument.load(pickFileData.buf.slice(0));
+    const totalPages = srcDoc.getPageCount();
+    const pages = parsePageRanges(rangeStr, totalPages);
+
+    const newDoc = await PDFLib.PDFDocument.create();
+    const copied = await newDoc.copyPages(srcDoc, pages.map(p=>p-1));
+    copied.forEach(p=>newDoc.addPage(p));
+    const bytes = await newDoc.save();
+
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const base = pickFileData.name.replace(/\.pdf$/i,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'document';
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = base+'-selected-pages.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    document.getElementById('pickMsg').innerHTML = `<div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B"><b>Done.</b> Pulled ${pages.length} page${pages.length===1?'':'s'} out of ${totalPages} into a new PDF, and downloaded it. Attach that new file to Bid Documents or Drawings like normal.</div>`;
+  }catch(e){
+    console.error(e);
+    document.getElementById('pickMsg').innerHTML = '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+  }finally{
+    btn.disabled = false;
+    document.getElementById('pickRunLabel').textContent = origLabel;
+    document.getElementById('pickSpin').style.display = 'none';
+  }
 }
 
 function clearProject(btn){
