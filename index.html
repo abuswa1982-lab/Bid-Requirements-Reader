@@ -346,6 +346,44 @@
   </div>
 
   <div class="card">
+    <h2>Addendums</h2>
+    <p class="hint" style="margin:0 0 10px">If an addendum comes in later, drop it here, give it a name, and read it &mdash; same mechanism as the bid documents above, including the same chunking and resume protection for a large addendum. Each addendum stays separate and permanent; a second one later doesn't touch the first. Both Checklist 1 and Checklist 2 automatically check against the main bid documents <b>plus every addendum here</b>, with no extra steps.</p>
+    <div class="field">
+      <label class="fld" for="addendName">Addendum name</label>
+      <input type="text" id="addendName" placeholder="e.g. Addendum 1">
+      <p class="hint">Reusing the exact same name later replaces that one addendum, and lets you resume it if it stopped partway through. A different name adds a new one alongside it.</p>
+    </div>
+    <div class="drop" id="addendDrop">
+      <div class="big">Drop the addendum PDF(s) here</div>
+      <div class="small">or click to choose. Multiple files OK.</div>
+    </div>
+    <input type="file" id="addendFile" accept="application/pdf" multiple style="display:none">
+    <div class="filelist" id="addendFilelist"></div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="addendPagesPerBatch">Pages per batch</label>
+      <input type="text" id="addendPagesPerBatch" value="5" style="max-width:80px">
+    </div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="addendResumeFromPage">Resume from page (optional)</label>
+      <input type="text" id="addendResumeFromPage" placeholder="leave blank to start from page 1" style="max-width:220px">
+      <p class="hint">Type the same addendum name above, plus this page, to continue one that stopped partway through.</p>
+    </div>
+    <div class="field">
+      <label class="fld" for="addendAutoStopPage">Auto-stop after page (optional)</label>
+      <input type="text" id="addendAutoStopPage" placeholder="e.g. 250" style="max-width:220px">
+    </div>
+    <div class="runbar" style="margin:14px 0 0">
+      <button class="run" id="addendRun" onclick="runAddendum()">
+        <span class="spin" id="addendSpin"></span><span id="addendRunLabel">Read this addendum</span>
+      </button>
+      <button class="stopbtn" id="addendRunStop" onclick="stopAddendum()" type="button">Stop</button>
+      <span class="hint" id="addendRunHint" style="margin:0"></span>
+    </div>
+    <div id="addendMsg"></div>
+    <div id="addendList" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px"></div>
+  </div>
+
+  <div class="card">
     <h2>Checklist 1 (reference, for step 2)</h2>
     <p class="hint" style="margin:0 0 10px">Set this up once. It doesn't do anything on its own, it just sits here ready. After Step 1 finishes below, a "Check Against Checklist 1" button appears that reads this and compares it against the checklist, flagging anything missing, in one step.</p>
     <div class="toggle">
@@ -469,17 +507,48 @@
       <p class="hint">If a previous run on this same drawing set broke partway through, it tells you which page to resume from. Type it here and run again \u2014 picks up from there instead of re-reading everything.</p>
     </div>
     <div class="field">
-      <label class="fld" for="dwgTestCap">Test run</label>
-      <select id="dwgTestCap" style="max-width:220px">
-        <option value="0">Full document</option>
-        <option value="5" selected>Just test — first 5 pages (quickest)</option>
-        <option value="10">Just test — first 10 pages</option>
-        <option value="15">Just test — first 15 pages</option>
-        <option value="20">Just test — first 20 pages</option>
-        <option value="50">Just test — first 50 pages</option>
-      </select>
-      <p class="hint">Preview on a slice of the drawing set before committing to the full run.</p>
+      <label class="fld" for="dwgAutoStopPage">Auto-stop after page (optional, for deliberately chunking a huge drawing set)</label>
+      <input type="text" id="dwgAutoStopPage" placeholder="e.g. 250" style="max-width:220px">
+      <p class="hint">Leave empty to read straight through the whole drawing set. Set this to work through a genuinely large set in planned chunks instead of one long unattended run: set it to 250, run it, let it stop itself cleanly at the nearest finished batch, review the result, then use <b>Resume from page</b> for the next chunk.</p>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Addendums</h2>
+    <p class="hint" style="margin:0 0 10px">If a redlined-drawing addendum comes in later, drop it here, give it a name, and read it &mdash; same mechanism as the drawings above, including the same chunking and resume protection for a large redline set. Each addendum stays separate and permanent; a second one later doesn't touch the first. Checklist 3 automatically checks against the main drawings <b>plus every addendum here</b>, with no extra steps.</p>
+    <div class="field">
+      <label class="fld" for="dwgAddendName">Addendum name</label>
+      <input type="text" id="dwgAddendName" placeholder="e.g. Addendum 2, Drawing Redlines">
+      <p class="hint">Reusing the exact same name later replaces that one addendum, and lets you resume it if it stopped partway through. A different name adds a new one alongside it.</p>
+    </div>
+    <div class="drop" id="dwgAddendDrop">
+      <div class="big">Drop the addendum drawing PDF(s) here</div>
+      <div class="small">or click to choose. Multiple files OK.</div>
+    </div>
+    <input type="file" id="dwgAddendFile" accept="application/pdf" multiple style="display:none">
+    <div class="filelist" id="dwgAddendFilelist"></div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="dwgAddendPagesPerBatch">Pages per batch</label>
+      <input type="text" id="dwgAddendPagesPerBatch" value="5" style="max-width:80px">
+    </div>
+    <div class="field" style="margin:14px 0 0">
+      <label class="fld" for="dwgAddendResumeFromPage">Resume from page (optional)</label>
+      <input type="text" id="dwgAddendResumeFromPage" placeholder="leave blank to start from page 1" style="max-width:220px">
+      <p class="hint">Type the same addendum name above, plus this page, to continue one that stopped partway through.</p>
+    </div>
+    <div class="field">
+      <label class="fld" for="dwgAddendAutoStopPage">Auto-stop after page (optional)</label>
+      <input type="text" id="dwgAddendAutoStopPage" placeholder="e.g. 250" style="max-width:220px">
+    </div>
+    <div class="runbar" style="margin:14px 0 0">
+      <button class="run" id="dwgAddendRun" onclick="runDwgAddendum()">
+        <span class="spin" id="dwgAddendSpin"></span><span id="dwgAddendRunLabel">Read this addendum</span>
+      </button>
+      <button class="stopbtn" id="dwgAddendRunStop" onclick="stopDwgAddendum()" type="button">Stop</button>
+      <span class="hint" id="dwgAddendRunHint" style="margin:0"></span>
+    </div>
+    <div id="dwgAddendMsg"></div>
+    <div id="dwgAddendList" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px"></div>
   </div>
 
   <div class="card">
@@ -660,6 +729,12 @@ let secondCheckAbort = null;
 let thirdCheckAbort = null;
 let kickoffAbort = null;
 let askAbort = null;
+let addendAbort = null;
+let addendums = []; // [{name, data}]
+let addendFiles = []; // [{name, size, buf}]
+let dwgAddendAbort = null;
+let dwgAddendums = []; // [{name, data}]
+let dwgAddendFiles = []; // [{name, size, buf}]
 
 const ORDER = ["Human Review Items","Risk Flags","Pricing Impacts","Submission Checklist"];
 const WATCH_BUCKETS = new Set(["Human Review Items","Risk Flags"]);
@@ -839,6 +914,22 @@ async function loadCloudProject(btn){
       renderKickoff(lastKickoff);
       loaded.push('Kickoff Sheet');
     }
+    addendums = [];
+    Object.keys(latestByPhase).filter(k=>k.indexOf('addendum:')===0).forEach(k=>{
+      const parsed = JSON.parse(latestByPhase[k].data);
+      addendums.push({ name: parsed._addendumName || k.replace('addendum:',''), data: parsed });
+    });
+    renderAddendumsList();
+    if(addendums.length) loaded.push(addendums.length+' addendum'+(addendums.length===1?'':'s'));
+
+    dwgAddendums = [];
+    Object.keys(latestByPhase).filter(k=>k.indexOf('dwg-addendum:')===0).forEach(k=>{
+      const parsed = JSON.parse(latestByPhase[k].data);
+      dwgAddendums.push({ name: parsed._addendumName || k.replace('dwg-addendum:',''), data: parsed });
+    });
+    renderDwgAddendumsList();
+    if(dwgAddendums.length) loaded.push(dwgAddendums.length+' drawing addendum'+(dwgAddendums.length===1?'':'s'));
+
     renderKickoffStatus();
     renderAskStatus();
     cloudStatus('Loaded from the cloud: ' + loaded.join(', ') + '.');
@@ -986,6 +1077,197 @@ function addFiles(list){
     };
     reader.readAsArrayBuffer(f);
   });
+}
+
+function slugify(s){
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'addendum';
+}
+
+// Everything Checklist 1, Checklist 2, Kickoff, and Ask should treat as "the bid documents"
+// once addendums exist: the main extraction's items, plus every addendum's items, each
+// tagged in its source so a human can still tell which document a finding actually came from.
+function combinedBidItems(){
+  const base = (lastData && lastData.items) ? lastData.items.slice() : [];
+  addendums.forEach(a=>{
+    (a.data.items||[]).forEach(it=>{
+      base.push(Object.assign({}, it, { source: '['+a.name+'] '+(it.source||'') }));
+    });
+  });
+  return base;
+}
+
+const addendDrop = document.getElementById('addendDrop');
+const addendFileInput = document.getElementById('addendFile');
+addendDrop.addEventListener('click', ()=>addendFileInput.click());
+addendDrop.addEventListener('dragover', e=>{e.preventDefault();addendDrop.classList.add('over')});
+addendDrop.addEventListener('dragleave', ()=>addendDrop.classList.remove('over'));
+addendDrop.addEventListener('drop', e=>{e.preventDefault();addendDrop.classList.remove('over');addAddendFiles(e.dataTransfer.files)});
+addendFileInput.addEventListener('change', e=>{addAddendFiles(e.target.files); e.target.value='';});
+
+function addAddendFiles(list){
+  [...list].forEach(f=>{
+    if(!isPdfFile(f)){
+      document.getElementById('addendMsg').innerHTML = `<div class="note err"><b>Hold on.</b> "${f.name}" doesn't look like a PDF (got type "${f.type||'unknown'}"). Only .pdf files can be attached here.</div>`;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      addendFiles.push({name:f.name, size:f.size, buf: reader.result});
+      renderAddendFiles();
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+function renderAddendFiles(){
+  const el = document.getElementById('addendFilelist');
+  el.innerHTML = '';
+  addendFiles.forEach((f,i)=>{
+    const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+    const d = document.createElement('div');
+    d.className='filepill';
+    d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">\u2715</span>`;
+    d.querySelector('.nm').textContent = f.name;
+    d.querySelector('.x').onclick = ()=>{addendFiles.splice(i,1);renderAddendFiles()};
+    el.appendChild(d);
+  });
+}
+
+function renderAddendumsList(){
+  const el = document.getElementById('addendList');
+  el.innerHTML = '';
+  addendums.forEach((a,idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'statuschip ready';
+    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;font-weight:700;margin-left:2px" title="remove">\u2715</span>`;
+    chip.querySelector('span:nth-child(2)').textContent = a.name + ' \u2014 ' + (a.data.items||[]).length + ' findings';
+    chip.querySelector('span:last-child').onclick = ()=>{ addendums.splice(idx,1); renderAddendumsList(); };
+    el.appendChild(chip);
+  });
+}
+
+function saveAddendumLocal(name, data){
+  const idx = addendums.findIndex(a=>a.name.toLowerCase()===name.toLowerCase());
+  if(idx>=0) addendums[idx] = {name, data};
+  else addendums.push({name, data});
+}
+
+function stopAddendum(){
+  if(addendAbort) addendAbort.abort();
+}
+
+async function runAddendum(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('addendMsg').innerHTML = '';
+  if(!key){ document.getElementById('addendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>'; return; }
+  const name = document.getElementById('addendName').value.trim();
+  if(!name){ document.getElementById('addendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Give this addendum a name first, e.g. "Addendum 1".</div>'; return; }
+  if(addendFiles.length===0){ document.getElementById('addendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Attach at least one addendum PDF above first.</div>'; return; }
+
+  const proj = document.getElementById('proj').value.trim();
+  const pagesPerBatch = Math.max(1, parseInt(document.getElementById('addendPagesPerBatch').value,10) || 5);
+  const resumeFromPage = Math.max(0, parseInt(document.getElementById('addendResumeFromPage').value,10) || 0);
+  const testCap = parseInt(document.getElementById('addendAutoStopPage').value,10) || 0;
+  const existing = addendums.find(a=>a.name.toLowerCase()===name.toLowerCase());
+
+  const btn = document.getElementById('addendRun');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  document.getElementById('addendRunLabel').textContent = 'Reading\u2026';
+  document.getElementById('addendSpin').style.display = 'inline-block';
+  addendAbort = new AbortController();
+  document.getElementById('addendRunStop').classList.add('show');
+
+  let pagesProcessed = (resumeFromPage>1 && existing) ? (resumeFromPage-1) : 0;
+  let results = (resumeFromPage>1 && existing) ? [existing.data] : [];
+
+  try{
+    let lastCheckpointPages = pagesProcessed;
+    let wasTruncated = false;
+    let sawSparseText = false;
+
+    outer:
+    for(let i=0;i<addendFiles.length;i++){
+      const f = addendFiles[i];
+      let batches;
+      try{
+        const r = await splitIntoTextBatches(f.buf, pagesPerBatch);
+        batches = r.batches;
+        if(r.avgCharsPerPage < 15) sawSparseText = true;
+      }catch(splitErr){
+        throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
+      }
+      if(resumeFromPage>1){
+        batches = batches.filter(b=>b.endPage >= resumeFromPage);
+      }
+      for(let b=0;b<batches.length;b++){
+        const batch = batches[b];
+        if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
+        document.getElementById('addendRunHint').textContent =
+          (testCap ? 'Stopping at page '+testCap+': ' : '') +
+          'File ' + (i+1) + ' of ' + addendFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
+          ', batch ' + (b+1) + ' of ' + batches.length + '\u2026';
+        const content = [
+          {type:"text", text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"'"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued bid documents. Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages."},
+          {type:"text", text:"PAGE TEXT:\n\n"+batch.text}
+        ];
+        const res = await fetchWithRetry(key, content, undefined, addendAbort.signal, 'addendRunHint');
+        if(!res.ok){
+          const errtxt = await res.text();
+          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" \u2014 API "+res.status+": "+errtxt.slice(0,300));
+        }
+        const data = await res.json();
+        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
+        const parsed = parseJSON(text);
+        if(!parsed){
+          if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished \u2014 it ran out of room mid-answer. Try running again; if it keeps happening on this same file, try a smaller Pages per batch.");
+          throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,400));
+        }
+        results.push(parsed);
+        pagesProcessed += (batch.endPage - batch.startPage + 1);
+        if(testCap && pagesProcessed >= testCap && (i<addendFiles.length-1 || b<batches.length-1)) wasTruncated = true;
+        if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
+          lastCheckpointPages = pagesProcessed;
+          const checkpoint = results.length>1 ? mergeResults(results) : results[0];
+          saveAddendumLocal(name, checkpoint);
+          saveToCloud('addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
+        }
+      }
+    }
+
+    const merged = results.length>1 ? mergeResults(results) : results[0];
+    saveAddendumLocal(name, merged);
+    saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+    renderAddendumsList();
+    document.getElementById('addendMsg').innerHTML = wasTruncated
+      ? `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00"><b>Stopped at your page limit.</b> Roughly ${pagesProcessed} pages read so far for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again to continue.</div>`
+      : (sawSparseText
+        ? `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00"><b>Added, but heads up:</b> "${name}" had very little extractable text \u2014 that usually means it's scanned rather than a digital document, so results may be thin.</div>`
+        : `<div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B"><b>Added.</b> "${name}" is read and will be included automatically the next time Checklist 1 or Checklist 2 runs.</div>`);
+    addendFiles = [];
+    renderAddendFiles();
+  }catch(e){
+    console.error(e);
+    const isAbort = e.name==='AbortError';
+    if(pagesProcessed>0 && results.length>0){
+      const merged = results.length>1 ? mergeResults(results) : results[0];
+      saveAddendumLocal(name, merged);
+      saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+      renderAddendumsList();
+      document.getElementById('addendMsg').innerHTML = isAbort
+        ? `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped by you.</b> Roughly ${pagesProcessed} pages saved for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) whenever you're ready to continue.</div>`
+        : `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped on an error, but progress is saved.</b> Roughly ${pagesProcessed} pages read for "${name}" before it broke: ${cleanErr(e.message)}. Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again.</div>`;
+    } else if(isAbort){
+      document.getElementById('addendMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished yet, so there\'s nothing saved for this run.</div>';
+    } else {
+      document.getElementById('addendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
+  }finally{
+    btn.disabled = false;
+    document.getElementById('addendRunLabel').textContent = origLabel;
+    document.getElementById('addendSpin').style.display = 'none';
+    document.getElementById('addendRunStop').classList.remove('show');
+  }
 }
 
 let masterMode = 'pdf';
@@ -1170,6 +1452,186 @@ function renderDwgFiles(){
   if(warn) warn.style.display = bigFile ? 'block' : 'none';
 }
 
+function combinedDwgItems(){
+  const base = (lastDwgData && lastDwgData.items) ? lastDwgData.items.slice() : [];
+  dwgAddendums.forEach(a=>{
+    (a.data.items||[]).forEach(it=>{
+      base.push(Object.assign({}, it, { source: '['+a.name+'] '+(it.source||'') }));
+    });
+  });
+  return base;
+}
+
+const dwgAddendDrop = document.getElementById('dwgAddendDrop');
+const dwgAddendFileInput = document.getElementById('dwgAddendFile');
+dwgAddendDrop.addEventListener('click', ()=>dwgAddendFileInput.click());
+dwgAddendDrop.addEventListener('dragover', e=>{e.preventDefault();dwgAddendDrop.classList.add('over')});
+dwgAddendDrop.addEventListener('dragleave', ()=>dwgAddendDrop.classList.remove('over'));
+dwgAddendDrop.addEventListener('drop', e=>{e.preventDefault();dwgAddendDrop.classList.remove('over');addDwgAddendFiles(e.dataTransfer.files)});
+dwgAddendFileInput.addEventListener('change', e=>{addDwgAddendFiles(e.target.files); e.target.value='';});
+
+function addDwgAddendFiles(list){
+  [...list].forEach(f=>{
+    if(!isPdfFile(f)){
+      document.getElementById('dwgAddendMsg').innerHTML = `<div class="note err"><b>Hold on.</b> "${f.name}" doesn't look like a PDF (got type "${f.type||'unknown'}"). Only .pdf files can be attached here.</div>`;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      dwgAddendFiles.push({name:f.name, size:f.size, buf: reader.result});
+      renderDwgAddendFiles();
+    };
+    reader.readAsArrayBuffer(f);
+  });
+}
+
+function renderDwgAddendFiles(){
+  const el = document.getElementById('dwgAddendFilelist');
+  el.innerHTML = '';
+  dwgAddendFiles.forEach((f,i)=>{
+    const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+    const d = document.createElement('div');
+    d.className='filepill';
+    d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">\u2715</span>`;
+    d.querySelector('.nm').textContent = f.name;
+    d.querySelector('.x').onclick = ()=>{dwgAddendFiles.splice(i,1);renderDwgAddendFiles()};
+    el.appendChild(d);
+  });
+}
+
+function renderDwgAddendumsList(){
+  const el = document.getElementById('dwgAddendList');
+  el.innerHTML = '';
+  dwgAddendums.forEach((a,idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'statuschip ready';
+    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;font-weight:700;margin-left:2px" title="remove">\u2715</span>`;
+    chip.querySelector('span:nth-child(2)').textContent = a.name + ' \u2014 ' + (a.data.items||[]).length + ' findings';
+    chip.querySelector('span:last-child').onclick = ()=>{ dwgAddendums.splice(idx,1); renderDwgAddendumsList(); };
+    el.appendChild(chip);
+  });
+}
+
+function saveDwgAddendumLocal(name, data){
+  const idx = dwgAddendums.findIndex(a=>a.name.toLowerCase()===name.toLowerCase());
+  if(idx>=0) dwgAddendums[idx] = {name, data};
+  else dwgAddendums.push({name, data});
+}
+
+function stopDwgAddendum(){
+  if(dwgAddendAbort) dwgAddendAbort.abort();
+}
+
+async function runDwgAddendum(){
+  const key = document.getElementById('key').value.trim();
+  document.getElementById('dwgAddendMsg').innerHTML = '';
+  if(!key){ document.getElementById('dwgAddendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>'; return; }
+  const name = document.getElementById('dwgAddendName').value.trim();
+  if(!name){ document.getElementById('dwgAddendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Give this addendum a name first, e.g. "Addendum 2".</div>'; return; }
+  if(dwgAddendFiles.length===0){ document.getElementById('dwgAddendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Attach at least one addendum PDF above first.</div>'; return; }
+  if(typeof PDFLib==='undefined'){ document.getElementById('dwgAddendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> The PDF splitting library did not load. Check your connection and reload the page.</div>'; return; }
+
+  const proj = document.getElementById('dwgProj').value.trim();
+  const pagesPerBatch = Math.max(1, parseInt(document.getElementById('dwgAddendPagesPerBatch').value,10) || 5);
+  const resumeFromPage = Math.max(0, parseInt(document.getElementById('dwgAddendResumeFromPage').value,10) || 0);
+  const testCap = parseInt(document.getElementById('dwgAddendAutoStopPage').value,10) || 0;
+  const existing = dwgAddendums.find(a=>a.name.toLowerCase()===name.toLowerCase());
+
+  const btn = document.getElementById('dwgAddendRun');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  document.getElementById('dwgAddendRunLabel').textContent = 'Reading\u2026';
+  document.getElementById('dwgAddendSpin').style.display = 'inline-block';
+  dwgAddendAbort = new AbortController();
+  document.getElementById('dwgAddendRunStop').classList.add('show');
+
+  let pagesProcessed = (resumeFromPage>1 && existing) ? (resumeFromPage-1) : 0;
+  let results = (resumeFromPage>1 && existing) ? [existing.data] : [];
+
+  try{
+    let lastCheckpointPages = pagesProcessed;
+    let wasTruncated = false;
+
+    outer:
+    for(let i=0;i<dwgAddendFiles.length;i++){
+      const f = dwgAddendFiles[i];
+      let batches;
+      try{
+        batches = await splitIntoBatches(f.buf, pagesPerBatch);
+      }catch(splitErr){
+        throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
+      }
+      if(resumeFromPage>1){
+        batches = batches.filter(b=>b.endPage >= resumeFromPage);
+      }
+      for(let b=0;b<batches.length;b++){
+        const batch = batches[b];
+        if(testCap && pagesProcessed >= testCap){ wasTruncated = true; break outer; }
+        document.getElementById('dwgAddendRunHint').textContent =
+          (testCap ? 'Stopping at page '+testCap+': ' : '') +
+          'File ' + (i+1) + ' of ' + dwgAddendFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
+          ', batch ' + (b+1) + ' of ' + batches.length + '\u2026';
+        const content = [
+          {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
+          {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"' to the drawing set"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued drawings. Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
+        ];
+        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAddendAbort.signal, 'dwgAddendRunHint');
+        if(!res.ok){
+          const errtxt = await res.text();
+          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" \u2014 API "+res.status+": "+errtxt.slice(0,300));
+        }
+        const data = await res.json();
+        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
+        const parsed = parseJSON(text);
+        if(!parsed){
+          if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished \u2014 it ran out of room mid-answer. Try running again; if it keeps happening on this same file, try a smaller Pages per batch.");
+          throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,400));
+        }
+        results.push(parsed);
+        pagesProcessed += (batch.endPage - batch.startPage + 1);
+        if(testCap && pagesProcessed >= testCap && (i<dwgAddendFiles.length-1 || b<batches.length-1)) wasTruncated = true;
+        if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
+          lastCheckpointPages = pagesProcessed;
+          const checkpoint = results.length>1 ? mergeResults(results) : results[0];
+          saveDwgAddendumLocal(name, checkpoint);
+          saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
+        }
+      }
+    }
+
+    const merged = results.length>1 ? mergeResults(results) : results[0];
+    saveDwgAddendumLocal(name, merged);
+    saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+    renderDwgAddendumsList();
+    document.getElementById('dwgAddendMsg').innerHTML = wasTruncated
+      ? `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00"><b>Stopped at your page limit.</b> Roughly ${pagesProcessed} pages read so far for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again to continue.</div>`
+      : `<div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B"><b>Added.</b> "${name}" is read and will be included automatically the next time Checklist 3 runs.</div>`;
+    dwgAddendFiles = [];
+    renderDwgAddendFiles();
+  }catch(e){
+    console.error(e);
+    const isAbort = e.name==='AbortError';
+    if(pagesProcessed>0 && results.length>0){
+      const merged = results.length>1 ? mergeResults(results) : results[0];
+      saveDwgAddendumLocal(name, merged);
+      saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+      renderDwgAddendumsList();
+      document.getElementById('dwgAddendMsg').innerHTML = isAbort
+        ? `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped by you.</b> Roughly ${pagesProcessed} pages saved for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) whenever you're ready to continue.</div>`
+        : `<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped on an error, but progress is saved.</b> Roughly ${pagesProcessed} pages read for "${name}" before it broke: ${cleanErr(e.message)}. Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again.</div>`;
+    } else if(isAbort){
+      document.getElementById('dwgAddendMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished yet, so there\'s nothing saved for this run.</div>';
+    } else {
+      document.getElementById('dwgAddendMsg').innerHTML = '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
+  }finally{
+    btn.disabled = false;
+    document.getElementById('dwgAddendRunLabel').textContent = origLabel;
+    document.getElementById('dwgAddendSpin').style.display = 'none';
+    document.getElementById('dwgAddendRunStop').classList.remove('show');
+  }
+}
+
 function arrayBufferToBase64(bytes){
   let binary = '';
   const chunkSize = 0x8000;
@@ -1334,6 +1796,7 @@ RULES:
 2. When genuinely unsure, default to "Missing" over "Not Applicable". Missing is the safe failure mode, a human just double-checks something that was actually fine. Wrongly marking something "Not Applicable" when it truly applies is the dangerous failure mode, it can get skipped entirely.
 3. Keep every entry short, specific, and plain. No em dashes. The "note" field is a single short sentence, 20 words or fewer, never a paragraph, even for large or detailed checklists. Brevity here matters: a long checklist run against many findings can produce a very long report, and terse notes keep the whole thing from running out of room mid-response.
 4. Do not invent Master Checklist items that were not actually in the text provided.
+5. Some Bid Findings items are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum, not the original bid documents. An addendum ALWAYS supersedes the original on the exact same spec section or topic. If an addendum-tagged item and an original (untagged) item both reference the same spec section, use ONLY the addendum's version when deciding Covered/Missing/Not Applicable, and ignore the superseded original entirely, even if it appears elsewhere in the findings. Never present both as if they were separate, equally-valid, or conflicting requirements, and never surface the outdated original as its own finding. A spec section can be resent in full with only one or two lines actually changed; you cannot tell which lines changed from what you're given, so treat the entire addendum-tagged section as the current version of that section, not just the specific line that might have changed.
 
 Return ONLY valid JSON, no prose, no markdown fences. Schema:
 {
@@ -1415,6 +1878,8 @@ Your job is NOT to summarize each input one after another. Your job is to weigh 
 
 Do not just concatenate the inputs' bullet points. If two inputs say the same thing, merge it into one line. If they conflict, call out the conflict explicitly — that's the most valuable thing this pass can produce.
 
+One important exception: some items inside spec_extraction or drawing_extraction are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum. An addendum ALWAYS supersedes the original bid documents on the exact same spec section or topic. This is NOT a conflict to report — do not list an addendum correcting the original as a "Conflicts Between Documents" item. Instead, silently use only the addendum's version when reasoning about that topic, and treat the original as outdated. Reserve "Conflicts Between Documents" for genuine tension between different sources (e.g. spec vs. drawings), not for an addendum doing its job of updating the original.
+
 Produce a bid/no-bid recommendation. Weigh submission risk (can we even get the bid in cleanly and on time), pricing/scope risk, and drawing-side hidden scope/coordination risk together. Justify the verdict in 2-4 plain sentences a project manager could read in ten seconds. Choose "BID", "BID WITH CAUTION", or "DO NOT BID YET".
 
 Return ONLY valid JSON, no prose, no markdown fences. Schema:
@@ -1473,6 +1938,7 @@ RULES:
 2. Be direct and concise. Answer the actual question first, in plain language, then add only as much supporting detail as directly helps.
 3. Always say which part of the provided data the answer came from (e.g. "Spec Extraction", "Checklist 1 coverage", "Drawing Extraction").
 4. No em dashes.
+5. Some items are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum. An addendum ALWAYS supersedes the original on the exact same spec section or topic. If the question touches a spec section that both an addendum and the original findings mention, answer using ONLY the addendum's version, and say so (e.g. "per Addendum 2, which supersedes the original spec on this section").
 
 Return ONLY valid JSON, no prose, no markdown fences. Schema:
 {
@@ -1669,7 +2135,7 @@ async function runDrawings(){
   if(!key){ return showDwgErr("Add your Anthropic API key up top first."); }
   const proj = document.getElementById('dwgProj').value.trim();
   const pagesPerBatch = Math.max(1, parseInt(document.getElementById('dwgPagesPerBatch').value,10) || 5);
-  const testCap = parseInt(document.getElementById('dwgTestCap').value,10) || 0;
+  const testCap = parseInt(document.getElementById('dwgAutoStopPage').value,10) || 0;
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('dwgResumeFromPage').value,10) || 0);
 
   if(dwgFiles.length===0){ return showDwgErr("Add at least one drawing set PDF."); }
@@ -1701,7 +2167,7 @@ async function runDrawings(){
         const displayTotalPages = testCap ? Math.min(testCap, batch.totalPages) : batch.totalPages;
         const displayTotalBatches = testCap ? Math.min(batches.length, Math.ceil(testCap / pagesPerBatch)) : batches.length;
         document.getElementById('dwgRunHint').textContent =
-          (testCap ? 'TEST RUN (first '+testCap+' pages): ' : '') +
+          (testCap ? 'Stopping at page '+testCap+': ' : '') +
           'File ' + (i+1) + ' of ' + dwgFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
           ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
         const content = [
@@ -1801,7 +2267,7 @@ function renderDwg(d){
     </div>`;
   } else if(d._testRun){
     msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
-      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the drawing set's pages (your ${d._testRun.cap}-page cap). If this was just a quick preview, switch <b>Test run</b> back to "Full document" and rerun from scratch. If you're deliberately working through a huge document in planned chunks, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> instead, clear the cap, and run again to continue from here \u2014 don't restart from page 1.
+      <b>Stopped at your page limit, not the full drawing set.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the drawing set's pages (your ${d._testRun.cap}-page auto-stop). Type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b>, clear <b>Auto-stop after page</b> (or set it to your next chunk boundary), and run again to continue from here \u2014 don't restart from page 1.
     </div>`;
   } else {
     msgEl.innerHTML='';
@@ -2035,7 +2501,7 @@ function render(d){
     </div>`;
   } else if(d._testRun){
     msgEl.innerHTML = `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
-      <b>TEST RUN, not complete.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page cap). If this was just a quick preview, switch <b>Test run</b> back to "Full document" and rerun from scratch. If you're deliberately working through a huge document in planned chunks, type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b> instead, clear the cap, and run again to continue from here \u2014 don't restart from page 1.
+      <b>Stopped at your page limit, not the full document.</b> Stopped after roughly ${d._testRun.pagesProcessed} of the document's pages (your ${d._testRun.cap}-page auto-stop). Type <b>${d._testRun.pagesProcessed+1}</b> into <b>Resume from page</b>, clear <b>Auto-stop after page</b> (or set it to your next chunk boundary), and run again to continue from here \u2014 don't restart from page 1.
     </div>`;
   } else {
     msgEl.innerHTML='';
@@ -2309,7 +2775,7 @@ async function runMasterCheck(btn){
     const findingsSummary = {
       project: lastData.project,
       bid_due: lastData.bid_due,
-      items: (lastData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+      items: combinedBidItems().map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
     };
     const content = [];
     if(usingPdf){
@@ -2527,7 +2993,7 @@ async function runSecondCheck(btn){
     const findingsSummary = {
       project: lastData.project,
       bid_due: lastData.bid_due,
-      items: (lastData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+      items: combinedBidItems().map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
     };
     const content = [];
     if(usingPdf){
@@ -2744,7 +3210,7 @@ async function runThirdCheck(btn){
   try{
     const findingsSummary = {
       project: lastDwgData.project,
-      items: (lastDwgData.items||[]).map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
+      items: combinedDwgItems().map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source }))
     };
     const content = [];
     if(usingPdf){
@@ -2969,10 +3435,10 @@ async function runKickoff(){
   kickoffAbort = new AbortController();
   try{
     const payload = { project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
-    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:(lastData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
+    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:combinedBidItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
     if(lastMasterCheck) payload.checklist_1_coverage = lastMasterCheck;
     if(lastSecondCheck) payload.checklist_2_coverage = lastSecondCheck;
-    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:(lastDwgData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
+    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:combinedDwgItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
     if(lastThirdCheck) payload.checklist_3_coverage = lastThirdCheck;
 
     const content = [
@@ -3264,10 +3730,10 @@ async function runAsk(){
   askAbort = new AbortController();
   try{
     const payload = { question, project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
-    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:(lastData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:combinedBidItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
     if(lastMasterCheck) payload.checklist_1_coverage = lastMasterCheck;
     if(lastSecondCheck) payload.checklist_2_coverage = lastSecondCheck;
-    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:(lastDwgData.items||[]).map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:combinedDwgItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
     if(lastThirdCheck) payload.checklist_3_coverage = lastThirdCheck;
     if(lastKickoff) payload.kickoff_sheet = lastKickoff;
 
@@ -3429,6 +3895,16 @@ function clearProject(btn){
   lastSecondCheck = null;
   document.getElementById('proj').value = '';
   document.getElementById('resumeFromPage').value = '';
+  addendums = [];
+  addendFiles = [];
+  document.getElementById('addendName').value = '';
+  document.getElementById('addendFile').value = '';
+  document.getElementById('addendPagesPerBatch').value = '5';
+  document.getElementById('addendResumeFromPage').value = '';
+  document.getElementById('addendAutoStopPage').value = '';
+  renderAddendFiles();
+  renderAddendumsList();
+  document.getElementById('addendMsg').innerHTML = '';
   document.getElementById('autoStopPage').value = '';
   document.getElementById('text').value = '';
   document.getElementById('file').value = '';
@@ -3455,6 +3931,15 @@ function clearProject(btn){
   lastThirdCheck = null;
   document.getElementById('dwgProj').value = '';
   document.getElementById('dwgResumeFromPage').value = '';
+  document.getElementById('dwgAutoStopPage').value = '';
+  dwgAddendums = [];
+  dwgAddendFiles = [];
+  document.getElementById('dwgAddendName').value = '';
+  document.getElementById('dwgAddendResumeFromPage').value = '';
+  document.getElementById('dwgAddendAutoStopPage').value = '';
+  renderDwgAddendFiles();
+  renderDwgAddendumsList();
+  document.getElementById('dwgAddendMsg').innerHTML = '';
   document.getElementById('dwgFile').value = '';
   renderDwgFiles();
   document.getElementById('dwgResults').style.display = 'none';
