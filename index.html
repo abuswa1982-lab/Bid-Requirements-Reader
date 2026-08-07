@@ -231,7 +231,8 @@
 <body>
 <div id="cloudFailBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#B4451F;color:#fff;padding:12px 20px;font-size:13.5px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.2)">
   <span id="cloudFailText"></span>
-  <button onclick="document.getElementById('cloudFailBanner').style.display='none'" style="margin-left:14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer">Dismiss</button>
+  <button id="cloudFailRetryBtn" onclick="retryLastSave(this)" style="margin-left:14px;background:#fff;color:#B4451F;border:1px solid #fff;border-radius:4px;padding:3px 12px;font-size:12px;font-weight:700;cursor:pointer">Retry Save</button>
+  <button onclick="document.getElementById('cloudFailBanner').style.display='none'" style="margin-left:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer">Dismiss</button>
 </div>
 
 <header class="top">
@@ -284,6 +285,16 @@
       <button class="btn2 primary" onclick="loadCloudProject(this)" type="button">Load Project</button>
       <span class="hint" id="cloudStatus" style="margin:0"></span>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Recover a Failed Save</h2>
+    <p class="hint" style="margin:0 0 10px">If the red banner ever shows up and "Retry Save" doesn't get through (a real network block, not a one-time blip), download a backup file with the button next to it. Bring that file here \u2014 on any computer, any network, even weeks later \u2014 and push it into the cloud. Nothing gets re-read, nothing costs anything, this only moves data that's already been extracted.</p>
+    <input type="file" id="backupFile" accept="application/json">
+    <div style="margin-top:10px">
+      <button class="btn2 primary" onclick="importBackup()" type="button">Push to Cloud</button>
+    </div>
+    <div id="backupMsg"></div>
   </div>
 
   <div class="pagetabs">
@@ -447,6 +458,7 @@
     <div id="groups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('spec_extraction', lastData)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
       <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 1</button>
@@ -460,6 +472,7 @@
       <div id="masterCheckGroups"></div>
       <div class="resbar">
         <button class="btn2 primary" onclick="downloadMasterCheckPDF(this)">Download PDF</button>
+        <button class="btn2" onclick="downloadBackup('checklist_1', lastMasterCheck)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
         <button class="btn2 primary" onclick="downloadMasterCheckExcel(this)">Download Excel</button>
         <button class="btn2" onclick="copyMasterCheckText(this)">Copy gap report</button>
       </div>
@@ -470,6 +483,7 @@
       <div id="secondCheckGroups"></div>
       <div class="resbar">
         <button class="btn2 primary" onclick="downloadSecondCheckPDF(this)">Download PDF</button>
+        <button class="btn2" onclick="downloadBackup('checklist_2', lastSecondCheck)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
         <button class="btn2 primary" onclick="downloadSecondCheckExcel(this)">Download Excel</button>
         <button class="btn2" onclick="copySecondCheckText(this)">Copy gap report</button>
       </div>
@@ -591,6 +605,7 @@
     <div id="dwgGroups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadDwgPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('drawing_extraction', lastDwgData)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadDwgExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyDwgText(this)">Copy as checklist</button>
       <button class="btn2" id="thirdCheckBtn" onclick="runThirdCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 3</button>
@@ -604,6 +619,7 @@
     <div id="thirdCheckGroups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadThirdCheckPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('checklist_3', lastThirdCheck)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadThirdCheckExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyThirdCheckText(this)">Copy gap report</button>
     </div>
@@ -636,6 +652,7 @@
     <div id="kickoffBody"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadKickoffPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('kickoff_sheet', lastKickoff)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadKickoffExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyKickoffText(this)">Copy as text</button>
     </div>
@@ -786,9 +803,76 @@ function cloudStatus(msg, isErr){
 // Fire-and-forget save: never blocks or breaks the tab's own flow if it fails.
 // Silent no-op if the Worker URL or project name hasn't been filled in \u2014 the app
 // behaves exactly as before (browser-memory-only) until someone opts into the cloud panel.
+let lastFailedSave = null; // {phase, data} — set on any save failure, cleared on success
+
 function showCloudFailBanner(msg){
   document.getElementById('cloudFailText').textContent = msg;
   document.getElementById('cloudFailBanner').style.display = 'block';
+}
+
+async function retryLastSave(btn){
+  if(!lastFailedSave){ document.getElementById('cloudFailBanner').style.display = 'none'; return; }
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Retrying\u2026';
+  const { phase, data } = lastFailedSave;
+  await saveToCloud(phase, data);
+  btn.disabled = false;
+  btn.textContent = origLabel;
+}
+
+// Downloads a small, plain-JSON backup of one already-extracted result. Round-trips
+// perfectly (unlike parsing a formatted Excel sheet back apart), so it can be pushed
+// to the cloud later from anywhere \u2014 a different computer, a different network \u2014
+// without ever re-reading the original document or costing anything.
+function downloadBackup(phase, data, projectHint){
+  if(!data){ return; }
+  const project = document.getElementById('cloudProject').value.trim() || (projectHint||'') || 'project';
+  const payload = { _phase: phase, _project: project, _savedAt: new Date().toISOString(), data };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const base = project.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40) || 'project';
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = base+'-'+phase.replace(/[^a-z0-9]+/g,'-')+'-backup.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function importBackup(){
+  const msgEl = document.getElementById('backupMsg');
+  msgEl.innerHTML = '';
+  const fileInput = document.getElementById('backupFile');
+  if(!fileInput.files.length){ msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Choose a backup .json file first.</div>'; return; }
+  try{
+    const text = await fileInput.files[0].text();
+    const payload = JSON.parse(text);
+    if(!payload._phase || payload.data === undefined){ throw new Error("This doesn't look like a valid backup file \u2014 it's missing the expected fields."); }
+    const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
+    if(!workerUrl){ msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Enter the Worker URL above first.</div>'; return; }
+    let project = document.getElementById('cloudProject').value.trim();
+    if(!project && payload._project){
+      document.getElementById('cloudProject').value = payload._project;
+      project = payload._project;
+    }
+    if(!project){ msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Type the project name above first. This backup suggests: "'+esc(payload._project||'unknown')+'".</div>'; return; }
+    const res = await fetch(workerUrl+'/save', {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({ project_name: project, phase: payload._phase, data: payload.data })
+    });
+    if(res.ok){
+      msgEl.innerHTML = '<div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B"><b>Pushed.</b> "'+esc(payload._phase)+'" for "'+esc(project)+'" is now saved to the cloud.</div>';
+      refreshProjectSuggestions();
+    } else {
+      msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Push failed (status '+res.status+'). Try again, or from a different network if this one is also blocked.</div>';
+    }
+  }catch(e){
+    console.error(e);
+    msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> '+esc(e.message)+'</div>';
+  }
 }
 
 let projectSuggestionsLoaded = false;
@@ -824,10 +908,12 @@ async function saveToCloud(phase, data){
   const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
   const project = document.getElementById('cloudProject').value.trim();
   if(!project){
+    lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Project name box at the top is empty. Type a project name there now if you want future results saved. Download PDF/Excel on this tab now so this result isn\'t lost.');
     return;
   }
   if(!workerUrl){
+    lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Worker URL box at the top is empty. Download PDF/Excel on this tab now so this result isn\'t lost.');
     return;
   }
@@ -840,12 +926,16 @@ async function saveToCloud(phase, data){
     if(res.ok){
       cloudStatus('Saved "'+phase+'" to the cloud just now.');
       refreshProjectSuggestions(); // pick up a brand-new project name, fire-and-forget
+      lastFailedSave = null;
+      document.getElementById('cloudFailBanner').style.display = 'none';
     } else {
       cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
+      lastFailedSave = { phase, data };
       showCloudFailBanner('"'+phase+'" was NOT saved to the cloud (status '+res.status+'). Download PDF/Excel on this tab now so this result isn\'t lost, then check the Worker URL and your connection.');
     }
   }catch(e){
     cloudStatus('Could not reach the Worker to save. Check the Worker URL above. This tab\'s results are still fine locally.', true);
+    lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 could not reach the Worker. This can happen behind a VPN or restrictive network. Download PDF/Excel on this tab now so this result isn\'t lost.');
   }
 }
