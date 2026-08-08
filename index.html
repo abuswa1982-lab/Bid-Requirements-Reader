@@ -971,9 +971,30 @@ async function loadCloudProject(btn){
     const latestByPhase = {};
     rows.forEach(r=>{ if(!latestByPhase[r.phase]) latestByPhase[r.phase] = r; });
 
+    // Bid Documents and Drawings save each batch's findings as their own small row
+    // (phase like "spec_extraction_items:p001835") plus a tiny status-only row under the
+    // plain phase name, instead of one huge growing row \u2014 stitches them back together here.
+    // Falls back to the old all-in-one-row format automatically for anything saved before
+    // this existed (that data already has "items" directly on the status row).
+    function reconstructFromItemRows(basePhase){
+      const progressRow = latestByPhase[basePhase];
+      const meta = progressRow ? JSON.parse(progressRow.data) : null;
+      const itemKeys = Object.keys(latestByPhase).filter(k=>k.indexOf(basePhase+'_items:')===0).sort();
+      if(itemKeys.length){
+        let items = [];
+        itemKeys.forEach(k=>{
+          const batchData = JSON.parse(latestByPhase[k].data);
+          items = items.concat(batchData.items||[]);
+        });
+        return meta ? Object.assign({}, meta, { items }) : { items };
+      }
+      return meta;
+    }
+
     const loaded = [];
-    if(latestByPhase.spec_extraction){
-      lastData = JSON.parse(latestByPhase.spec_extraction.data);
+    const reconstructedSpec = reconstructFromItemRows('spec_extraction');
+    if(reconstructedSpec){
+      lastData = reconstructedSpec;
       render(lastData);
       document.getElementById('proj').value = lastData.project || project;
       loaded.push('Spec Extraction');
@@ -988,8 +1009,9 @@ async function loadCloudProject(btn){
       renderSecondCheck(lastSecondCheck);
       loaded.push('Checklist 2');
     }
-    if(latestByPhase.drawing_extraction){
-      lastDwgData = JSON.parse(latestByPhase.drawing_extraction.data);
+    const reconstructedDwg = reconstructFromItemRows('drawing_extraction');
+    if(reconstructedDwg){
+      lastDwgData = reconstructedDwg;
       renderDwg(lastDwgData);
       document.getElementById('dwgProj').value = lastDwgData.project || project;
       loaded.push('Drawing Extraction');
@@ -2118,7 +2140,6 @@ async function run(){
     // from a prior partial run), instead of throwing it away and re-reading from page 1.
     const results = (resumeFromPage>1 && lastData) ? [lastData] : [];
     let pagesProcessed = (resumeFromPage>1 && lastData) ? (resumeFromPage-1) : 0;
-    let lastCheckpointPages = pagesProcessed;
     let wasTruncated = false;
     let wasStopped = false;
     let sawSparseText = false;
@@ -2166,12 +2187,12 @@ async function run(){
           results.push(parsed);
           pagesProcessed += (batch.endPage - batch.startPage + 1);
           if(testCap && pagesProcessed >= testCap && (i<files.length-1 || b<batches.length-1)) wasTruncated = true;
-          if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
-            lastCheckpointPages = pagesProcessed;
-            const checkpoint = results.length>1 ? mergeResults(results) : results[0];
-            checkpoint._testRun = { cap:null, pagesProcessed, checkpoint:true };
-            saveToCloud('spec_extraction', checkpoint); // fire-and-forget; doesn't block the loop
-          }
+          // Save this batch's own (small) findings as their own permanent row, plus a tiny
+          // status-only progress row under the original phase name. Never resends everything
+          // read so far, so this can never hit D1's 2MB-per-row limit no matter how long the
+          // document is \u2014 the exact thing that broke on the 2,000-page run.
+          saveToCloud('spec_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
+          saveToCloud('spec_extraction', { project: parsed.project||proj||null, bid_due: parsed.bid_due||null, submit_to: parsed.submit_to||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
         }
       }
     } else {
@@ -2197,7 +2218,10 @@ async function run(){
     lastData = merged;
     render(merged);
     if(sawSparseText) appendSparseTextWarning();
-    saveToCloud('spec_extraction', merged);
+    // Only a small status summary goes to the cloud here \u2014 the actual findings were already
+    // saved batch-by-batch as the run went, avoiding ever resending (or resaving) the whole
+    // growing result in one shot.
+    saveToCloud('spec_extraction', { project: merged.project, bid_due: merged.bid_due, submit_to: merged.submit_to, scores: merged.scores, _testRun: merged._testRun });
   }catch(e){
     const isAbort = e.name==='AbortError';
     if(pagesProcessed>0 && results.length>0){
@@ -2208,7 +2232,7 @@ async function run(){
       lastData = merged;
       render(merged);
       if(sawSparseText) appendSparseTextWarning();
-      saveToCloud('spec_extraction', merged);
+      saveToCloud('spec_extraction', { project: merged.project, bid_due: merged.bid_due, submit_to: merged.submit_to, scores: merged.scores, _testRun: merged._testRun });
     } else if(isAbort){
       document.getElementById('msg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
     } else {
@@ -2236,7 +2260,6 @@ async function runDrawings(){
   try{
     const results = (resumeFromPage>1 && lastDwgData) ? [lastDwgData] : [];
     let pagesProcessed = (resumeFromPage>1 && lastDwgData) ? (resumeFromPage-1) : 0;
-    let lastCheckpointPages = pagesProcessed;
     let wasTruncated = false;
 
     outer:
@@ -2280,12 +2303,11 @@ async function runDrawings(){
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
-        if(pagesProcessed - lastCheckpointPages >= 10 || b===batches.length-1){
-          lastCheckpointPages = pagesProcessed;
-          const checkpoint = results.length>1 ? mergeResults(results) : results[0];
-          checkpoint._testRun = { cap:null, pagesProcessed, checkpoint:true };
-          saveToCloud('drawing_extraction', checkpoint); // fire-and-forget; doesn't block the loop
-        }
+        // Same fix as Bid Documents: each batch's own small findings become their own permanent
+        // row, plus a tiny status-only progress row, so a long drawing set can never hit D1's
+        // 2MB-per-row limit no matter how many pages it has.
+        saveToCloud('drawing_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
+        saveToCloud('drawing_extraction', { project: parsed.project||proj||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
       }
     }
 
@@ -2293,7 +2315,7 @@ async function runDrawings(){
     merged._testRun = wasTruncated ? { cap: testCap, pagesProcessed } : null;
     lastDwgData = merged;
     renderDwg(merged);
-    saveToCloud('drawing_extraction', merged);
+    saveToCloud('drawing_extraction', { project: merged.project, scores: merged.scores, _testRun: merged._testRun });
   }catch(e){
     const isAbort = e.name==='AbortError';
     if(pagesProcessed>0 && results.length>0){
@@ -2303,7 +2325,7 @@ async function runDrawings(){
         : { cap: null, pagesProcessed, stoppedByError: true, errorMsg: cleanErr(e.message) };
       lastDwgData = merged;
       renderDwg(merged);
-      saveToCloud('drawing_extraction', merged);
+      saveToCloud('drawing_extraction', { project: merged.project, scores: merged.scores, _testRun: merged._testRun });
     } else if(isAbort){
       document.getElementById('dwgMsg').innerHTML = `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> No pages had finished being read yet, so there's nothing to show. Adjust your settings and run again whenever you're ready.</div>`;
     } else {
