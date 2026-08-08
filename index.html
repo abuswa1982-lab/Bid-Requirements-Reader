@@ -496,6 +496,15 @@
   <div id="results">
     <div class="summary" id="summary"></div>
     <div class="scorebar" id="scorebar"></div>
+    <div class="resbar" style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid var(--line)">
+      <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('spec_extraction', lastData)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
+      <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
+      <button class="btn2" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 1</button>
+      <button class="btn2" onclick="runSecondCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 2</button>
+      <span class="hint" style="margin:6px 0 0;width:100%">Same buttons as below \u2014 this copy just saves you scrolling past the findings.</span>
+    </div>
     <div id="groups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadPDF(this)">Download PDF</button>
@@ -658,6 +667,14 @@
   <div id="dwgResults" style="display:none">
     <div class="summary" id="dwgSummary"></div>
     <div class="scorebar" id="dwgScorebar"></div>
+    <div class="resbar" style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid var(--line)">
+      <button class="btn2 primary" onclick="downloadDwgPDF(this)">Download PDF</button>
+      <button class="btn2" onclick="downloadBackup('drawing_extraction', lastDwgData)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
+      <button class="btn2 primary" onclick="downloadDwgExcel(this)">Download Excel</button>
+      <button class="btn2" onclick="copyDwgText(this)">Copy as checklist</button>
+      <button class="btn2" onclick="runThirdCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 3</button>
+      <span class="hint" style="margin:6px 0 0;width:100%">Same buttons as below \u2014 this copy just saves you scrolling past the findings.</span>
+    </div>
     <div id="dwgGroups"></div>
     <div class="resbar">
       <button class="btn2 primary" onclick="downloadDwgPDF(this)">Download PDF</button>
