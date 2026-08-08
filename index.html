@@ -16,8 +16,8 @@
     --paper:#F5F7F9;
     --card:#FFFFFF;
     --ink:#1A2530;
-    --navy:#16304B;
-    --blue:#1E63A8;
+    --navy:#0C447C;
+    --blue:#378ADD;
     --blue-tint:#E7F0F8;
     --rust:#B4451F;
     --rust-tint:#FBECE4;
@@ -121,6 +121,16 @@
   .statuschip .dot{width:8px;height:8px;border-radius:50%;background:#C7CDD3;flex:none}
   .statuschip.ready{border-color:#BFDCC9;background:#F1F8F4;color:#215A3B}
   .statuschip.ready .dot{background:#2E7D57}
+
+  .collapsible-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+  .collapsible-head h2{margin:0}
+  .collapsible-head .chev{transition:transform .15s;color:var(--muted);font-size:16px;flex:none}
+  .collapsible-head.open .chev{transform:rotate(180deg)}
+  .collapsible-summary{font-size:12.5px;color:var(--muted);margin-left:auto;font-weight:500}
+  .collapsible-body{margin-top:14px}
+  .setup-wrap{background:var(--blue-tint);border:1px solid #CBDDEE;border-radius:6px;padding:16px 20px;margin-bottom:18px}
+  .setup-wrap .card{background:var(--card)}
+  .setup-wrap .collapsible-head h2{color:var(--blue);text-transform:none;font-size:15px;letter-spacing:0}
 
   .stopbtn{display:none;font-family:var(--body);font-size:13px;font-weight:600;padding:9px 16px;border-radius:5px;border:1px solid #C0392B;color:#C0392B;background:var(--card);cursor:pointer}
   .stopbtn:hover{background:#FBECE4}
@@ -251,50 +261,61 @@
 
 <div class="wrap">
 
-  <div class="card">
-    <h2>Connection</h2>
-    <div class="keyrow">
-      <div>
-        <label class="fld" for="key">Anthropic API key</label>
-        <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+  <div class="setup-wrap">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+      <h2>Setup</h2>
+      <span class="collapsible-summary">API key &middot; cloud project &middot; load &amp; recover</span>
+    </div>
+    <div class="collapsible-body" style="display:none">
+
+      <div class="card">
+        <h2>Connection</h2>
+        <div class="keyrow">
+          <div>
+            <label class="fld" for="key">Anthropic API key</label>
+            <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="modelchip" id="modelchip">model: loading…</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="rememberKey" style="width:15px;height:15px;margin:0;cursor:pointer">
+          Remember this key on this device (skips re-pasting it every visit)
+        </label>
+        <p class="hint">Off by default: the key stays in this tab only and clears when you close it. Checking the box saves it in this browser's local storage instead, so it survives reloads, on this device only, never sent anywhere but Anthropic. Only check it on a computer only you use.</p>
       </div>
-      <div class="modelchip" id="modelchip">model: loading…</div>
-    </div>
-    <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
-      <input type="checkbox" id="rememberKey" style="width:15px;height:15px;margin:0;cursor:pointer">
-      Remember this key on this device (skips re-pasting it every visit)
-    </label>
-    <p class="hint">Off by default: the key stays in this tab only and clears when you close it. Checking the box saves it in this browser's local storage instead, so it survives reloads, on this device only, never sent anywhere but Anthropic. Only check it on a computer only you use.</p>
-  </div>
 
-  <div class="card">
-    <h2>Cloud Project (optional)</h2>
-    <p class="hint" style="margin:0 0 10px">If you fill this in, every result from every tab below saves automatically the moment it finishes — no extra clicks. Leave it blank and the app works exactly as before, everything staying only in this browser tab.</p>
-    <div class="field">
-      <label class="fld" for="cloudWorkerUrl">Worker URL</label>
-      <input type="text" id="cloudWorkerUrl" value="https://camtech-bid-reader-api.abuswa1982.workers.dev" placeholder="https://camtech-bid-reader-api.yourname.workers.dev">
-      <p class="hint">Already filled in for this tool \u2014 nobody needs to type or remember this. Only touch it if you ever point this app at a different Worker.</p>
-    </div>
-    <div class="field">
-      <label class="fld" for="cloudProject">Project name</label>
-      <input type="text" id="cloudProject" list="projectSuggestions" placeholder="e.g. Erie County Health Lab, Building 17 RTU Replacement">
-      <datalist id="projectSuggestions"></datalist>
-      <p class="hint" id="projectSuggestHint" style="margin-top:4px"></p>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn2 primary" onclick="loadCloudProject(this)" type="button">Load Project</button>
-      <span class="hint" id="cloudStatus" style="margin:0"></span>
-    </div>
-  </div>
+      <div class="card">
+        <h2>Cloud Project (optional)</h2>
+        <p class="hint" style="margin:0 0 10px">If you fill this in, every result from every tab below saves automatically the moment it finishes — no extra clicks. Leave it blank and the app works exactly as before, everything staying only in this browser tab.</p>
+        <div class="field">
+          <label class="fld" for="cloudWorkerUrl">Worker URL</label>
+          <input type="text" id="cloudWorkerUrl" value="https://camtech-bid-reader-api.abuswa1982.workers.dev" placeholder="https://camtech-bid-reader-api.yourname.workers.dev">
+          <p class="hint">Already filled in for this tool \u2014 nobody needs to type or remember this. Only touch it if you ever point this app at a different Worker.</p>
+        </div>
+        <div class="field">
+          <label class="fld" for="cloudProject">Project name</label>
+          <input type="text" id="cloudProject" list="projectSuggestions" placeholder="e.g. Erie County Health Lab, Building 17 RTU Replacement">
+          <datalist id="projectSuggestions"></datalist>
+          <p class="hint" id="projectSuggestHint" style="margin-top:4px"></p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn2 primary" onclick="loadCloudProject(this)" type="button">Load Project</button>
+          <span class="hint" id="cloudStatus" style="margin:0"></span>
+        </div>
+      </div>
 
-  <div class="card">
-    <h2>Recover a Failed Save</h2>
-    <p class="hint" style="margin:0 0 10px">If the red banner ever shows up and "Retry Save" doesn't get through (a real network block, not a one-time blip), download a backup file with the button next to it. Bring that file here \u2014 on any computer, any network, even weeks later \u2014 and push it into the cloud. Nothing gets re-read, nothing costs anything, this only moves data that's already been extracted.</p>
-    <input type="file" id="backupFile" accept="application/json">
-    <div style="margin-top:10px">
-      <button class="btn2 primary" onclick="importBackup()" type="button">Push to Cloud</button>
+      <div class="card">
+        <h2>Recover a Failed Save</h2>
+        <p class="hint" style="margin:0 0 10px">If the red banner ever shows up and "Retry Save" doesn't get through (a real network block, not a one-time blip), download a backup file with the button next to it. Bring that file here \u2014 on any computer, any network, even weeks later \u2014 and push it into the cloud. Nothing gets re-read, nothing costs anything, this only moves data that's already been extracted.</p>
+        <input type="file" id="backupFile" accept="application/json">
+        <div style="margin-top:10px">
+          <button class="btn2 primary" onclick="importBackup()" type="button">Push to Cloud</button>
+        </div>
+        <div id="backupMsg"></div>
+      </div>
+
     </div>
-    <div id="backupMsg"></div>
   </div>
 
   <div class="pagetabs">
@@ -308,7 +329,11 @@
   <div id="page-bid">
 
   <div class="card">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>The bid documents</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <div class="toggle">
       <button id="tab-pdf" class="on" onclick="setMode('pdf')">Upload PDF</button>
       <button id="tab-text" onclick="setMode('text')">Paste text</button>
@@ -354,10 +379,15 @@
       <label class="fld" for="text">Paste the front-end spec text</label>
       <textarea id="text" placeholder="Paste Instructions to Bidders, the Bid Form, addenda, and so on."></textarea>
     </div>
+    </div>
   </div>
 
   <div class="card">
-    <h2>Addendums</h2>
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+      <h2>Addendums</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
     <p class="hint" style="margin:0 0 10px">If an addendum comes in later, drop it here, give it a name, and read it &mdash; same mechanism as the bid documents above, including the same chunking and resume protection for a large addendum. Each addendum stays separate and permanent; a second one later doesn't touch the first. Both Checklist 1 and Checklist 2 automatically check against the main bid documents <b>plus every addendum here</b>, with no extra steps.</p>
     <div class="field">
       <label class="fld" for="addendName">Addendum name</label>
@@ -392,10 +422,15 @@
     </div>
     <div id="addendMsg"></div>
     <div id="addendList" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
   </div>
 
   <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>Checklist 1 (reference, for step 2)</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
     <p class="hint" style="margin:0 0 10px">Set this up once. It doesn't do anything on its own, it just sits here ready. After Step 1 finishes below, a "Check Against Checklist 1" button appears that reads this and compares it against the checklist, flagging anything missing, in one step.</p>
     <div class="toggle">
       <button id="master-tab-pdf" class="on" onclick="setMasterMode('pdf')" type="button">Upload PDF</button>
@@ -416,10 +451,15 @@
       <input type="checkbox" id="rememberMaster" style="width:15px;height:15px;margin:0;cursor:pointer">
       Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
     </label>
+    </div>
   </div>
 
   <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>Second Checklist (reference, for step 2)</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
     <p class="hint" style="margin:0 0 10px">A second, independent reference list — your own internal checklist, a client-specific list, whatever it is. Set it up once. After Step 1 finishes below, a "Check Against Checklist 2" button appears that reads this and compares it against the same extracted findings, in one step. The bid documents are never re-read for this, it reuses what Step 1 already found.</p>
     <div class="toggle">
       <button id="second-tab-pdf" class="on" onclick="setSecondMode('pdf')" type="button">Upload PDF</button>
@@ -440,6 +480,7 @@
       <input type="checkbox" id="rememberSecond" style="width:15px;height:15px;margin:0;cursor:pointer">
       Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
     </label>
+    </div>
   </div>
 
   <div class="runbar" style="margin-bottom:24px">
@@ -495,7 +536,11 @@
   <div id="page-dwg" style="display:none">
 
   <div class="card">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>The drawings</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <p class="hint" style="margin:0 0 10px">Upload the drawing set (plans, details, schedules, keynotes). Read separately from the front-end spec above, this pass looks for scope shown on the drawings, items implied but not called out in the spec, and keynote/legend items worth a second look.</p>
     <div>
       <label class="fld" for="dwgProj">Project name <span style="color:var(--muted);font-weight:400">(optional)</span></label>
@@ -525,10 +570,15 @@
       <input type="text" id="dwgAutoStopPage" placeholder="e.g. 250" style="max-width:220px">
       <p class="hint">Leave empty to read straight through the whole drawing set. Set this to work through a genuinely large set in planned chunks instead of one long unattended run: set it to 250, run it, let it stop itself cleanly at the nearest finished batch, review the result, then use <b>Resume from page</b> for the next chunk.</p>
     </div>
+    </div>
   </div>
 
   <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>Addendums</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
     <p class="hint" style="margin:0 0 10px">If a redlined-drawing addendum comes in later, drop it here, give it a name, and read it &mdash; same mechanism as the drawings above, including the same chunking and resume protection for a large redline set. Each addendum stays separate and permanent; a second one later doesn't touch the first. Checklist 3 automatically checks against the main drawings <b>plus every addendum here</b>, with no extra steps.</p>
     <div class="field">
       <label class="fld" for="dwgAddendName">Addendum name</label>
@@ -563,10 +613,15 @@
     </div>
     <div id="dwgAddendMsg"></div>
     <div id="dwgAddendList" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
   </div>
 
   <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
     <h2>Checklist 3 (reference, for drawing review)</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
     <p class="hint" style="margin:0 0 10px">Your drawing-review checklist. Set it up once. After the drawings are read below, a "Check Against Checklist 3" button appears that compares those findings against this list, in one step. The drawing set is never re-read for this, it reuses what was just found.</p>
     <div class="toggle">
       <button id="third-tab-pdf" class="on" onclick="setThirdMode('pdf')" type="button">Upload PDF</button>
@@ -587,6 +642,7 @@
       <input type="checkbox" id="rememberThird" style="width:15px;height:15px;margin:0;cursor:pointer">
       Remember the pasted text on this device (uploaded PDFs aren't saved, re-attach next time)
     </label>
+    </div>
   </div>
 
   <div class="runbar" style="margin-bottom:24px">
@@ -904,17 +960,21 @@ async function refreshProjectSuggestions(){
 // Load suggestions once automatically, since the Worker URL is pre-filled by default.
 refreshProjectSuggestions();
 
+let autoBackupDownloadedForOutage = false; // resets on any successful save, so a NEW outage later still gets its own fresh backup
+
 async function saveToCloud(phase, data){
   const workerUrl = document.getElementById('cloudWorkerUrl').value.trim().replace(/\/+$/,'');
   const project = document.getElementById('cloudProject').value.trim();
   if(!project){
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Project name box at the top is empty. Type a project name there now if you want future results saved. Download PDF/Excel on this tab now so this result isn\'t lost.');
+    autoBackupOnFirstFailure(phase, data);
     return;
   }
   if(!workerUrl){
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Worker URL box at the top is empty. Download PDF/Excel on this tab now so this result isn\'t lost.');
+    autoBackupOnFirstFailure(phase, data);
     return;
   }
   try{
@@ -927,17 +987,30 @@ async function saveToCloud(phase, data){
       cloudStatus('Saved "'+phase+'" to the cloud just now.');
       refreshProjectSuggestions(); // pick up a brand-new project name, fire-and-forget
       lastFailedSave = null;
+      autoBackupDownloadedForOutage = false;
       document.getElementById('cloudFailBanner').style.display = 'none';
     } else {
       cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
       lastFailedSave = { phase, data };
       showCloudFailBanner('"'+phase+'" was NOT saved to the cloud (status '+res.status+'). Download PDF/Excel on this tab now so this result isn\'t lost, then check the Worker URL and your connection.');
+      autoBackupOnFirstFailure(phase, data);
     }
   }catch(e){
     cloudStatus('Could not reach the Worker to save. Check the Worker URL above. This tab\'s results are still fine locally.', true);
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 could not reach the Worker. This can happen behind a VPN or restrictive network. Download PDF/Excel on this tab now so this result isn\'t lost.');
+    autoBackupOnFirstFailure(phase, data);
   }
+}
+
+// Fires exactly once per outage: the moment a save first fails, a backup file downloads
+// itself automatically, no clicking required. Doesn't fire again on every retry after that
+// (would flood the Downloads folder during a long outage) \u2014 it resets the moment a save
+// succeeds again, so a later, separate problem still gets its own fresh backup.
+function autoBackupOnFirstFailure(phase, data){
+  if(autoBackupDownloadedForOutage) return;
+  autoBackupDownloadedForOutage = true;
+  downloadBackup(phase, data);
 }
 
 const CLOUD_PHASE_LABELS = {
@@ -1281,6 +1354,14 @@ async function runAddendum(){
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('addendResumeFromPage').value,10) || 0);
   const testCap = parseInt(document.getElementById('addendAutoStopPage').value,10) || 0;
   const existing = addendums.find(a=>a.name.toLowerCase()===name.toLowerCase());
+
+  if(resumeFromPage<=1 && existing){
+    const already = (existing.data._testRun && existing.data._testRun.pagesProcessed) ? existing.data._testRun.pagesProcessed : null;
+    const warnMsg = already
+      ? 'You already have results through roughly page '+already+' for the addendum "'+name+'". "Resume from page" is empty (or 1), so reading now will start over from page 1 and re-read it all again. Are you sure?'
+      : 'You already have a finished result for the addendum "'+name+'". Reading again will re-read the whole thing from page 1. Are you sure?';
+    if(!confirm(warnMsg)) return;
+  }
 
   const btn = document.getElementById('addendRun');
   const origLabel = btn.textContent;
@@ -1648,6 +1729,14 @@ async function runDwgAddendum(){
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('dwgAddendResumeFromPage').value,10) || 0);
   const testCap = parseInt(document.getElementById('dwgAddendAutoStopPage').value,10) || 0;
   const existing = dwgAddendums.find(a=>a.name.toLowerCase()===name.toLowerCase());
+
+  if(resumeFromPage<=1 && existing){
+    const already = (existing.data._testRun && existing.data._testRun.pagesProcessed) ? existing.data._testRun.pagesProcessed : null;
+    const warnMsg = already
+      ? 'You already have results through roughly page '+already+' for the addendum "'+name+'". "Resume from page" is empty (or 1), so reading now will start over from page 1 and re-read it all again. Are you sure?'
+      : 'You already have a finished result for the addendum "'+name+'". Reading again will re-read the whole thing from page 1. Are you sure?';
+    if(!confirm(warnMsg)) return;
+  }
 
   const btn = document.getElementById('dwgAddendRun');
   const origLabel = btn.textContent;
@@ -2133,6 +2222,14 @@ async function run(){
   const testCap = autoStopPage;
   const resumeFromPage = Math.max(0, parseInt(document.getElementById('resumeFromPage').value,10) || 0);
 
+  if(resumeFromPage<=1 && lastData){
+    const already = (lastData._testRun && lastData._testRun.pagesProcessed) ? lastData._testRun.pagesProcessed : null;
+    const warnMsg = already
+      ? 'You already have results through roughly page '+already+' for this document. "Resume from page" is empty (or 1), so reading now will start over from page 1 and re-read everything again \u2014 including what\'s already done. Are you sure?'
+      : 'You already have a finished result for this document. Reading again will re-read the whole thing from page 1. Are you sure?';
+    if(!confirm(warnMsg)) return;
+  }
+
   setRunning(true);
   mainAbort = new AbortController();
   try{
@@ -2254,6 +2351,14 @@ async function runDrawings(){
 
   if(dwgFiles.length===0){ return showDwgErr("Add at least one drawing set PDF."); }
   if(typeof PDFLib==='undefined'){ return showDwgErr("The PDF splitting library did not load. Check your connection and reload the page."); }
+
+  if(resumeFromPage<=1 && lastDwgData){
+    const already = (lastDwgData._testRun && lastDwgData._testRun.pagesProcessed) ? lastDwgData._testRun.pagesProcessed : null;
+    const warnMsg = already
+      ? 'You already have results through roughly page '+already+' for this drawing set. "Resume from page" is empty (or 1), so reading now will start over from page 1 and re-read everything again \u2014 including what\'s already done. Are you sure?'
+      : 'You already have a finished result for this drawing set. Reading again will re-read the whole thing from page 1. Are you sure?';
+    if(!confirm(warnMsg)) return;
+  }
 
   setDwgRunning(true);
   dwgAbort = new AbortController();
@@ -2712,6 +2817,15 @@ function orderedRows(d){
   return rows;
 }
 function flash(btn){ if(!btn)return; const o=btn.textContent; btn.textContent='Done ✓'; setTimeout(()=>btn.textContent=o,1500); }
+
+// Generic click-to-open/close toggle used by Setup, Addendums, and the checklist
+// reference cards. Never touches any of the actual inputs inside \u2014 purely show/hide.
+function toggleCollapse(headEl){
+  const body = headEl.nextElementSibling;
+  const isOpen = headEl.classList.contains('open');
+  headEl.classList.toggle('open', !isOpen);
+  body.style.display = isOpen ? 'none' : 'block';
+}
 
 function downloadExcel(btn){
   if(!lastData) return;
