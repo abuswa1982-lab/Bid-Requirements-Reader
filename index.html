@@ -2165,11 +2165,24 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
   "source": "which part(s) of the provided data this came from, or empty string if not found"
 }`;
 
+// Browsers do not time out a hanging fetch() on their own \u2014 if a request stalls
+// (connects but never actually gets a response, no explicit error), the browser will
+// wait forever with zero feedback. This turns that into a real, visible failure after
+// a reasonable wait, instead of an invisible, permanent hang with nothing on screen.
+function timeoutAfter(ms, signal){
+  return new Promise((resolve, reject)=>{
+    if(signal && signal.aborted){ reject(new DOMException('Stopped by user','AbortError')); return; }
+    const t = setTimeout(()=>{ reject(new Error('REQUEST_TIMEOUT')); }, ms);
+    if(signal) signal.addEventListener('abort', ()=>{ clearTimeout(t); }, {once:true});
+  });
+}
+
 async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
   if(systemPrompt === undefined) systemPrompt = SYSTEM;
   const maxAttempts = 4;
   const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
   const retryableStatus = new Set([429, 500, 502, 503, 529]); // 529 = Anthropic "overloaded"
+  const REQUEST_TIMEOUT_MS = 120000; // 2 minutes with genuinely no response = treat as stalled
   for(let attempt=0; attempt<maxAttempts; attempt++){
     // Note: the AbortSignal is deliberately NOT passed into fetch()'s own options here.
     // Some sandboxed preview environments instrument window.fetch and try to relay the
@@ -2186,7 +2199,18 @@ async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
       },
       body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:systemPrompt, messages:[{role:"user",content}] })
     });
-    const res = await raceWithStop(fetchPromise, signal);
+    let res;
+    try{
+      res = await Promise.race([ raceWithStop(fetchPromise, signal), timeoutAfter(REQUEST_TIMEOUT_MS, signal) ]);
+    }catch(e){
+      if(e.message !== 'REQUEST_TIMEOUT') throw e; // real errors (network, Stop) pass straight through
+      if(attempt === maxAttempts-1) throw new Error("The request stalled \u2014 connected but never got a response, for over "+Math.round(REQUEST_TIMEOUT_MS/60000)+" minutes, after "+maxAttempts+" attempts. This can happen with a flaky connection. Try again once your connection is stable.");
+      const waitMs = delays[Math.min(attempt, delays.length-1)];
+      const hintEl = hintElId ? document.getElementById(hintElId) : null;
+      if(hintEl) hintEl.textContent = 'That request stalled with no response, waiting '+Math.round(waitMs/1000)+'s and retrying automatically (attempt '+(attempt+2)+' of '+maxAttempts+')\u2026';
+      await sleepWithStop(waitMs, signal);
+      continue;
+    }
     if(!retryableStatus.has(res.status) || attempt === maxAttempts-1) return res;
     const retryAfterHeader = res.headers.get('retry-after');
     const waitMs = retryAfterHeader ? (parseFloat(retryAfterHeader)*1000) : delays[Math.min(attempt, delays.length-1)];
