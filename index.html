@@ -1006,13 +1006,13 @@ async function saveToCloud(phase, data){
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Project name box at the top is empty. Type a project name there now if you want future results saved. Download PDF/Excel on this tab now so this result isn\'t lost.');
     autoBackupOnFirstFailure(phase, data);
-    return;
+    return false;
   }
   if(!workerUrl){
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 the Worker URL box at the top is empty. Download PDF/Excel on this tab now so this result isn\'t lost.');
     autoBackupOnFirstFailure(phase, data);
-    return;
+    return false;
   }
   try{
     const res = await fetch(workerUrl + '/save', {
@@ -1026,17 +1026,20 @@ async function saveToCloud(phase, data){
       lastFailedSave = null;
       autoBackupDownloadedForOutage = false;
       document.getElementById('cloudFailBanner').style.display = 'none';
+      return true;
     } else {
       cloudStatus('Cloud save failed (status '+res.status+'). This tab\'s results are still fine locally.', true);
       lastFailedSave = { phase, data };
       showCloudFailBanner('"'+phase+'" was NOT saved to the cloud (status '+res.status+'). Download PDF/Excel on this tab now so this result isn\'t lost, then check the Worker URL and your connection.');
       autoBackupOnFirstFailure(phase, data);
+      return false;
     }
   }catch(e){
     cloudStatus('Could not reach the Worker to save. Check the Worker URL above. This tab\'s results are still fine locally.', true);
     lastFailedSave = { phase, data };
     showCloudFailBanner('"'+phase+'" was NOT saved to the cloud \u2014 could not reach the Worker. This can happen behind a VPN or restrictive network. Download PDF/Excel on this tab now so this result isn\'t lost.');
     autoBackupOnFirstFailure(phase, data);
+    return false;
   }
 }
 
@@ -1449,14 +1452,14 @@ async function runAddendum(){
           lastCheckpointPages = pagesProcessed;
           const checkpoint = results.length>1 ? mergeResults(results) : results[0];
           saveAddendumLocal(name, checkpoint);
-          saveToCloud('addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
+          await saveToCloud('addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
         }
       }
     }
 
     const merged = results.length>1 ? mergeResults(results) : results[0];
     saveAddendumLocal(name, merged);
-    saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+    await saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
     renderAddendumsList();
     document.getElementById('addendMsg').innerHTML = wasTruncated
       ? `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00"><b>Stopped at your page limit.</b> Roughly ${pagesProcessed} pages read so far for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again to continue.</div>`
@@ -1471,7 +1474,7 @@ async function runAddendum(){
     if(pagesProcessed>0 && results.length>0){
       const merged = results.length>1 ? mergeResults(results) : results[0];
       saveAddendumLocal(name, merged);
-      saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+      await saveToCloud('addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
       renderAddendumsList();
       document.getElementById('addendMsg').innerHTML = isAbort
         ? `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped by you.</b> Roughly ${pagesProcessed} pages saved for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) whenever you're ready to continue.</div>`
@@ -1810,14 +1813,14 @@ async function runDwgAddendum(){
           lastCheckpointPages = pagesProcessed;
           const checkpoint = results.length>1 ? mergeResults(results) : results[0];
           saveDwgAddendumLocal(name, checkpoint);
-          saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
+          await saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, checkpoint, {_addendumName:name}));
         }
       }
     }
 
     const merged = results.length>1 ? mergeResults(results) : results[0];
     saveDwgAddendumLocal(name, merged);
-    saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+    await saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
     renderDwgAddendumsList();
     document.getElementById('dwgAddendMsg').innerHTML = wasTruncated
       ? `<div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00"><b>Stopped at your page limit.</b> Roughly ${pagesProcessed} pages read so far for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) and run again to continue.</div>`
@@ -1830,7 +1833,7 @@ async function runDwgAddendum(){
     if(pagesProcessed>0 && results.length>0){
       const merged = results.length>1 ? mergeResults(results) : results[0];
       saveDwgAddendumLocal(name, merged);
-      saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
+      await saveToCloud('dwg-addendum:'+slugify(name), Object.assign({}, merged, {_addendumName:name}));
       renderDwgAddendumsList();
       document.getElementById('dwgAddendMsg').innerHTML = isAbort
         ? `<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped by you.</b> Roughly ${pagesProcessed} pages saved for "${name}". Type <b>${pagesProcessed+1}</b> into Resume from page (with the same name above) whenever you're ready to continue.</div>`
@@ -2463,8 +2466,13 @@ async function run(){
           // status-only progress row under the original phase name. Never resends everything
           // read so far, so this can never hit D1's 2MB-per-row limit no matter how long the
           // document is \u2014 the exact thing that broke on the 2,000-page run.
-          saveToCloud('spec_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
-          saveToCloud('spec_extraction', { project: parsed.project||proj||null, bid_due: parsed.bid_due||null, submit_to: parsed.submit_to||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
+          // The status row is only updated AFTER the content row is confirmed saved \u2014 otherwise
+          // the reported "pages processed" number could silently get ahead of what's actually
+          // recoverable, and a resume could skip real pages whose content never made it.
+          const itemSaved = await saveToCloud('spec_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
+          if(itemSaved){
+            await saveToCloud('spec_extraction', { project: parsed.project||proj||null, bid_due: parsed.bid_due||null, submit_to: parsed.submit_to||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
+          }
         }
       }
     } else {
@@ -2574,9 +2582,13 @@ async function runDrawings(){
         if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
         // Same fix as Bid Documents: each batch's own small findings become their own permanent
         // row, plus a tiny status-only progress row, so a long drawing set can never hit D1's
-        // 2MB-per-row limit no matter how many pages it has.
-        saveToCloud('drawing_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
-        saveToCloud('drawing_extraction', { project: parsed.project||proj||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
+        // 2MB-per-row limit no matter how many pages it has. The status row only advances after
+        // the content row is confirmed saved, so "pages processed" can never overstate what's
+        // actually recoverable \u2014 a resume can never silently skip real, unsaved pages.
+        const itemSaved = await saveToCloud('drawing_extraction_items:p'+String(batch.endPage).padStart(6,'0'), parsed);
+        if(itemSaved){
+          await saveToCloud('drawing_extraction', { project: parsed.project||proj||null, scores: parsed.scores||{}, _testRun: { cap:null, pagesProcessed, checkpoint:true } });
+        }
       }
     }
 
