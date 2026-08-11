@@ -2294,7 +2294,31 @@ function mergeCoverageResults(a, b){
 // addenda combined can be too much for a single request to reliably complete \u2014 splitting it
 // keeps each individual request smaller and far less likely to stall or time out. If there are
 // no addenda for this project, this is just the normal single pass, completely unchanged.
-async function runChecklistCompareMultiPass(key, checklistContentBlocks, mainItems, addendaList, project, bidDue, systemPrompt, signal){
+function chunkArray(arr, size){
+  const chunks = [];
+  for(let i=0;i<arr.length;i+=size) chunks.push(arr.slice(i, i+size));
+  return chunks;
+}
+
+// Runs a checklist comparison as several smaller passes instead of one giant request, the same
+// idea as reading a document in page batches. A long document's findings list (main document
+// plus any addenda) gets split into manageable-sized groups; each group is compared against the
+// checklist on its own, then every result is merged together into one final answer using the
+// same safe merge logic as before \u2014 still exactly one row per checklist line, never a
+// duplicate or a contradiction between groups. This trades a smaller number of large, riskier
+// requests for a larger number of small, reliable ones \u2014 each individual request is far less
+// likely to stall or time out, at the cost of a few more total API calls than one combined
+// request would have made.
+const ITEMS_PER_CHECKLIST_PASS = 80;
+// Caches successful chunk results within this browser session, so if a later chunk fails,
+// retrying doesn't re-pay for and re-risk-stalling the chunks that already succeeded \u2014 same
+// spirit as Resume from page for document reads, just applied to checklist comparison chunks
+// instead of PDF pages. Clears naturally on page reload; if the underlying document or checklist
+// reference changes, the chunk signature (item count) changes too, so a stale cache entry is
+// never reused by mistake.
+const checklistPassCache = {};
+
+async function runChecklistCompareMultiPass(key, checklistType, checklistContentBlocks, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress){
   async function onePass(items, label){
     const findingsSummary = { project, bid_due: bidDue, items: items.map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source })) };
     const content = [
@@ -2304,17 +2328,44 @@ async function runChecklistCompareMultiPass(key, checklistContentBlocks, mainIte
     ];
     return await fetchAndParseJSON(key, content, systemPrompt, signal, null, "checklist comparison"+(label?(' ('+label+')'):''));
   }
-  if(!addendaList || !addendaList.length) return await onePass(mainItems, null);
 
-  const passMain = await onePass(mainItems, 'main document');
-  let addendaItems = [];
-  addendaList.forEach(a=>{
-    (a.data.items||[]).forEach(it=>{
-      addendaItems.push(Object.assign({}, it, { source: '['+a.name+'] '+(it.source||'') }));
+  const groups = [];
+  chunkArray(mainItems||[], ITEMS_PER_CHECKLIST_PASS).forEach((chunk,i,arr)=>{
+    groups.push({ items: chunk, label: arr.length>1 ? 'main document, part '+(i+1)+' of '+arr.length : 'main document' });
+  });
+  (addendaList||[]).forEach(a=>{
+    const taggedItems = (a.data.items||[]).map(it=>Object.assign({}, it, { source: '['+a.name+'] '+(it.source||'') }));
+    chunkArray(taggedItems, ITEMS_PER_CHECKLIST_PASS).forEach((chunk,i,arr)=>{
+      groups.push({ items: chunk, label: arr.length>1 ? a.name+', part '+(i+1)+' of '+arr.length : a.name });
     });
   });
-  const passAddenda = await onePass(addendaItems, 'addenda');
-  return mergeCoverageResults(passMain, passAddenda);
+  if(!groups.length) groups.push({ items: [], label: null });
+
+  let merged = null;
+  let completedCount = 0;
+  for(let g=0; g<groups.length; g++){
+    if(onProgress) onProgress(g+1, groups.length, groups[g].label, completedCount);
+    const cacheKey = checklistType+'::'+groups[g].label+'::'+groups[g].items.length;
+    let result;
+    try{
+      if(checklistPassCache[cacheKey]){
+        result = checklistPassCache[cacheKey]; // already succeeded on a prior attempt \u2014 free, no re-risk
+      } else {
+        result = await onePass(groups[g].items, groups[g].label);
+        checklistPassCache[cacheKey] = result;
+      }
+    }catch(e){
+      // Don't throw away chunks that already succeeded \u2014 attach what's done so far to the
+      // error so the caller can show and save it, instead of losing that work entirely.
+      e.partialCoverage = merged;
+      e.completedChunks = completedCount;
+      e.totalChunks = groups.length;
+      throw e;
+    }
+    merged = merged ? mergeCoverageResults(merged, result) : result;
+    completedCount++;
+  }
+  return merged;
 }
 
 function mergeResults(results){
@@ -3121,13 +3172,18 @@ async function runMasterCheck(btn){
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against master list…';
-    const parsed = await runChecklistCompareMultiPass(key, checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; });
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
     saveToCloud('checklist_1', parsed);
   }catch(e){
     console.error(e);
-    if(e.name==='AbortError'){
+    if(e.partialCoverage){
+      lastMasterCheck = e.partialCoverage;
+      renderMasterCheck(lastMasterCheck);
+      saveToCloud('checklist_1', lastMasterCheck);
+      document.getElementById('masterMsg').innerHTML = '<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped partway through, on an error.</b> Completed '+e.completedChunks+' of '+e.totalChunks+' parts before it broke \u2014 that work is saved and shown below, not lost. What went wrong: '+cleanErr(e.message)+' Click "Check Against Checklist 1" again \u2014 the parts already done won\'t be re-run or re-charged, only what\'s still missing.</div>';
+    } else if(e.name==='AbortError'){
       document.getElementById('masterMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
     } else {
       document.getElementById('masterMsg').innerHTML =
@@ -3321,13 +3377,18 @@ async function runSecondCheck(btn){
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against checklist 2…';
-    const parsed = await runChecklistCompareMultiPass(key, checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; });
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
     saveToCloud('checklist_2', parsed);
   }catch(e){
     console.error(e);
-    if(e.name==='AbortError'){
+    if(e.partialCoverage){
+      lastSecondCheck = e.partialCoverage;
+      renderSecondCheck(lastSecondCheck);
+      saveToCloud('checklist_2', lastSecondCheck);
+      document.getElementById('secondMsg').innerHTML = '<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped partway through, on an error.</b> Completed '+e.completedChunks+' of '+e.totalChunks+' parts before it broke \u2014 that work is saved and shown below, not lost. What went wrong: '+cleanErr(e.message)+' Click "Check Against Checklist 2" again \u2014 the parts already done won\'t be re-run or re-charged, only what\'s still missing.</div>';
+    } else if(e.name==='AbortError'){
       document.getElementById('secondMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
     } else {
       document.getElementById('secondMsg').innerHTML =
@@ -3521,13 +3582,18 @@ async function runThirdCheck(btn){
     }
 
     btn.textContent = dwgAddendums.length ? 'Checking main drawings\u2026' : 'Checking against checklist 3…';
-    const parsed = await runChecklistCompareMultiPass(key, checklistContentBlocks, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', checklistContentBlocks, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; });
     lastThirdCheck = parsed;
     renderThirdCheck(parsed);
     saveToCloud('checklist_3', parsed);
   }catch(e){
     console.error(e);
-    if(e.name==='AbortError'){
+    if(e.partialCoverage){
+      lastThirdCheck = e.partialCoverage;
+      renderThirdCheck(lastThirdCheck);
+      saveToCloud('checklist_3', lastThirdCheck);
+      document.getElementById('thirdMsg').innerHTML = '<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped partway through, on an error.</b> Completed '+e.completedChunks+' of '+e.totalChunks+' parts before it broke \u2014 that work is saved and shown below, not lost. What went wrong: '+cleanErr(e.message)+' Click "Check Against Checklist 3" again \u2014 the parts already done won\'t be re-run or re-charged, only what\'s still missing.</div>';
+    } else if(e.name==='AbortError'){
       document.getElementById('thirdMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
     } else {
       document.getElementById('thirdMsg').innerHTML =
