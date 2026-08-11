@@ -781,6 +781,26 @@
   </div>
 
   <div class="card">
+    <h2>Analyze this PDF (free, no AI)</h2>
+    <p class="hint" style="margin:0 0 10px">Checks every page for how much real, typed text it has \u2014 running page by page instead of just averaged across the whole document. Sorts pages into "real text" (send to Bid Documents) versus "little or none" (send to Drawings instead \u2014 could be a drawing, a scan, or a handwritten form; Drawings reads pages as images and will correctly figure out which). It can't reliably tell a genuine logo apart from a real scanned page with content \u2014 nothing free can \u2014 so it never claims a page is safe to skip, only which reader can actually make sense of it. Doesn't touch the AI, doesn't cost anything.</p>
+    <div class="runbar" style="margin:0">
+      <button class="run" id="analyzeRun" onclick="analyzePages()">
+        <span class="spin" id="analyzeSpin"></span><span id="analyzeRunLabel">Analyze pages</span>
+      </button>
+      <span class="hint" id="analyzeRunHint" style="margin:0"></span>
+    </div>
+    <div id="analyzeMsg"></div>
+    <div id="analyzeResults" style="display:none;margin-top:14px">
+      <div class="note" style="background:#F1F8F4;border:1px solid #BFDCC9;color:#215A3B">
+        <b>Real typed text</b> (send these to Bid Documents): <span id="analyzeTextRanges" style="font-family:var(--mono)"></span>
+      </div>
+      <div class="note" style="background:#FFF6E5;border:1px solid #EAD8A8;color:#8A5A00">
+        <b>Little or no typed text</b> \u2014 could be a drawing, a scan, or a handwritten form (send these to Drawings, which reads pages as images): <span id="analyzeImageRanges" style="font-family:var(--mono)"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <label class="fld" for="pickRanges">Which pages do you want?</label>
     <input type="text" id="pickRanges" placeholder="e.g. 1-10, 20-30, 45">
     <p class="hint">Single pages, ranges, or a mix, separated by commas. Order matters &mdash; the new PDF comes out in the order you list them here, not necessarily the original order.</p>
@@ -1421,18 +1441,7 @@ async function runAddendum(){
           {type:"text", text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"'"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued bid documents. Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages."},
           {type:"text", text:"PAGE TEXT:\n\n"+batch.text}
         ];
-        const res = await fetchWithRetry(key, content, undefined, addendAbort.signal, 'addendRunHint');
-        if(!res.ok){
-          const errtxt = await res.text();
-          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" \u2014 API "+res.status+": "+errtxt.slice(0,300));
-        }
-        const data = await res.json();
-        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
-        const parsed = parseJSON(text);
-        if(!parsed){
-          if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished \u2014 it ran out of room mid-answer. Try running again; if it keeps happening on this same file, try a smaller Pages per batch.");
-          throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,400));
-        }
+        const parsed = await fetchAndParseJSON(key, content, undefined, addendAbort.signal, 'addendRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<addendFiles.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -1793,18 +1802,7 @@ async function runDwgAddendum(){
           {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
           {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"' to the drawing set"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued drawings. Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
         ];
-        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAddendAbort.signal, 'dwgAddendRunHint');
-        if(!res.ok){
-          const errtxt = await res.text();
-          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" \u2014 API "+res.status+": "+errtxt.slice(0,300));
-        }
-        const data = await res.json();
-        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
-        const parsed = parseJSON(text);
-        if(!parsed){
-          if(data.stop_reason==='max_tokens') throw new Error("The response got cut off before it finished \u2014 it ran out of room mid-answer. Try running again; if it keeps happening on this same file, try a smaller Pages per batch.");
-          throw new Error("Could not read the response as a checklist. Raw output:\n\n"+text.slice(0,400));
-        }
+        const parsed = await fetchAndParseJSON(key, content, SYSTEM_DRAWINGS, dwgAddendAbort.signal, 'dwgAddendRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<dwgAddendFiles.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -2223,6 +2221,37 @@ async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
   }
 }
 
+// Wraps fetchWithRetry together with JSON parsing, and retries the WHOLE request \u2014 not just
+// the network call \u2014 if the API responds successfully but the content doesn't parse as valid
+// JSON. This is a real, occasional failure on dense or complex pages: the response completes
+// normally, but a small formatting slip in the model's own output breaks the JSON. A fresh
+// attempt very often succeeds on its own, so this tries again automatically a couple of times
+// instead of giving up on that whole batch the moment it happens once.
+async function fetchAndParseJSON(key, content, systemPrompt, signal, hintElId, contextLabel){
+  const maxParseAttempts = 3;
+  let lastText = '';
+  for(let attempt=0; attempt<maxParseAttempts; attempt++){
+    const res = await fetchWithRetry(key, content, systemPrompt, signal, hintElId);
+    if(!res.ok){
+      const errtxt = await res.text();
+      throw new Error(contextLabel+" \u2014 API "+res.status+": "+errtxt.slice(0,300));
+    }
+    const data = await res.json();
+    const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    lastText = text;
+    const parsed = parseJSON(text);
+    if(parsed) return parsed;
+    if(data.stop_reason==='max_tokens'){
+      throw new Error("The response for "+contextLabel+" got cut off before it finished \u2014 it ran out of room mid-answer. Try running again; if it keeps happening on this same file, try a smaller \u201cPages per batch\u201d setting so each chunk is lighter.");
+    }
+    if(attempt === maxParseAttempts-1) break;
+    const hintEl = hintElId ? document.getElementById(hintElId) : null;
+    if(hintEl) hintEl.textContent = "That response wasn't quite readable, retrying automatically (attempt "+(attempt+2)+" of "+maxParseAttempts+")\u2026";
+    await sleepWithStop(3000, signal);
+  }
+  throw new Error("Could not read the response for "+contextLabel+" as a checklist, after "+maxParseAttempts+" tries. Raw output:\n\n"+lastText.slice(0,400));
+}
+
 function mergeResults(results){
   const rank = {GREEN:0, YELLOW:1, RED:2};
   const merged = { project:null, bid_due:null, submit_to:null,
@@ -2310,18 +2339,7 @@ async function run(){
           const instructionText = "This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the document '"+f.name+"', one piece of a larger bid package split into batches for processing."+
               (proj?(" Project: "+proj):"")+" Extract the bid requirements as specified, but ONLY report what is actually present in THESE pages. If a requirement is clearly cut off at a page boundary, still report what you can see and set confidence to low.";
           const content = [ {type:"text",text:instructionText}, {type:"text",text:"PAGE TEXT:\n\n"+batch.text} ];
-          const res = await fetchWithRetry(key, content, undefined, mainAbort.signal, 'runhint');
-          if(!res.ok){
-            const errtxt = await res.text();
-            throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
-          }
-          const data = await res.json();
-          const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
-          const parsed = parseJSON(text);
-          if(!parsed){
-            if(data.stop_reason==='max_tokens') throw new Error("The response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" got cut off before it finished \u2014 it ran out of room mid-answer. This can happen on unusually dense pages. Try running again; if it keeps happening on this same file, try a smaller \u201cPages per batch\u201d setting so each chunk is lighter.");
-            throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400));
-          }
+          const parsed = await fetchAndParseJSON(key, content, undefined, mainAbort.signal, 'runhint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
           results.push(parsed);
           pagesProcessed += (batch.endPage - batch.startPage + 1);
           if(testCap && pagesProcessed >= testCap && (i<files.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -2434,18 +2452,7 @@ async function runDrawings(){
           {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
             (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
         ];
-        const res = await fetchWithRetry(key, content, SYSTEM_DRAWINGS, dwgAbort.signal, 'dwgRunHint');
-        if(!res.ok){
-          const errtxt = await res.text();
-          throw new Error("File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" — API "+res.status+": "+errtxt.slice(0,300));
-        }
-        const data = await res.json();
-        const text = (data.content||[]).filter(b2=>b2.type==='text').map(b2=>b2.text).join('\n').trim();
-        const parsed = parseJSON(text);
-        if(!parsed){
-            if(data.stop_reason==='max_tokens') throw new Error("The response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" got cut off before it finished \u2014 it ran out of room mid-answer. This can happen on unusually dense pages. Try running again; if it keeps happening on this same file, try a smaller \u201cPages per batch\u201d setting so each chunk is lighter.");
-            throw new Error("Could not read the response for '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage+" as a checklist. Raw output:\n\n"+text.slice(0,400));
-          }
+        const parsed = await fetchAndParseJSON(key, content, SYSTEM_DRAWINGS, dwgAbort.signal, 'dwgRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
         if(testCap && pagesProcessed >= testCap && (i<dwgFiles.length-1 || b<batches.length-1)) wasTruncated = true;
@@ -4106,6 +4113,102 @@ function parsePageRanges(str, maxPages){
   }
   if(!result.length) throw new Error("No valid pages found. Type something like: 1-10, 20-30");
   return result;
+}
+
+// Turns a sorted array of page numbers into a compact string like "1-6, 10, 14-16".
+function numbersToRanges(nums){
+  if(!nums.length) return '(none)';
+  const parts = [];
+  let start = nums[0], prev = nums[0];
+  for(let i=1;i<=nums.length;i++){
+    const n = nums[i];
+    if(n === prev+1){ prev = n; continue; }
+    parts.push(start===prev ? String(start) : (start+'-'+prev));
+    if(i<nums.length){ start = n; prev = n; }
+  }
+  return parts.join(', ');
+}
+
+// Renders a page at tiny resolution purely to estimate how much of it has real visual
+// content \u2014 a full drawing/scan covers a large share of the page, a small corner logo
+// covers almost none. Not a real render for viewing, just a fast coverage estimate.
+async function analyzePages(){
+  document.getElementById('analyzeMsg').innerHTML = '';
+  document.getElementById('analyzeResults').style.display = 'none';
+  if(!pickFileData){ document.getElementById('analyzeMsg').innerHTML = '<div class="note err"><b>Hold on.</b> Attach a PDF above first.</div>'; return; }
+
+  const btn = document.getElementById('analyzeRun');
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  document.getElementById('analyzeRunLabel').textContent = 'Analyzing\u2026';
+  document.getElementById('analyzeSpin').style.display = 'inline-block';
+
+  try{
+    const pdfjsLib = await getPdfJs();
+    const pdf = await pdfjsLib.getDocument({ data: pickFileData.buf.slice(0) }).promise;
+    const totalPages = pdf.numPages;
+    const textPages = [];
+    const imagePages = [];
+    // A page reads as "real, coherent text" if its text arrives as reasonably long chunks (real
+    // words and phrases run together) rather than a pile of short, disconnected fragments. That
+    // matters more than raw amount of text: a short but completely real page (a one-line summary,
+    // a small table) can have very little total text, and would get wrongly penalized by requiring
+    // a minimum length \u2014 while a densely-labeled technical drawing (room numbers, key notes,
+    // dimension tags) can rack up MORE total characters than real prose does, just broken into
+    // dozens of tiny separate labels. Average characters per text fragment tells the two apart far
+    // better than either total character count or item count alone.
+    //
+    // On top of that, a page with a huge number of actual drawn lines (every pipe, wall, and
+    // hatch mark in a real CAD export is a literal vector line in the PDF) is an even stronger,
+    // independent signal \u2014 a real technical drawing can have well over a hundred thousand of
+    // them, while an ordinary text page has a handful at most (table borders, underlines). If a
+    // page has a very high line count, it's treated as a drawing no matter what the text looks
+    // like. This catches true vector CAD drawings that the text-based check alone would miss.
+    //
+    // Everything that doesn't clearly look like real text gets routed to Drawings instead, since
+    // that tab reads pages as actual images and will correctly interpret whichever it turns out
+    // to be \u2014 a real drawing, a scan, a handwritten form, or a logo. There is no reliable free
+    // way to tell those apart from text alone, so this never claims a page is safe to skip, only
+    // which reader can actually make sense of it.
+    const MIN_TOTAL_CHARS = 10;
+    const MIN_AVG_CHARS_PER_ITEM = 15;
+    const LINE_COUNT_DRAWING_THRESHOLD = 500;
+    const OPS = pdfjsLib.OPS;
+    for(let p=1; p<=totalPages; p++){
+      document.getElementById('analyzeRunHint').textContent = 'Checking page '+p+' of '+totalPages+'\u2026';
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const items = content.items.map(it=>it.str).filter(s=>s.trim().length>0);
+      const totalChars = items.reduce((a,s)=>a+s.length, 0);
+      const avgCharsPerItem = items.length ? (totalChars/items.length) : 0;
+      const looksLikeProse = totalChars >= MIN_TOTAL_CHARS && avgCharsPerItem >= MIN_AVG_CHARS_PER_ITEM;
+
+      let hasTonsOfLines = false;
+      try{
+        const opList = await page.getOperatorList();
+        let pathOps = 0;
+        for(const op of opList.fnArray){
+          if(op===OPS.constructPath || op===OPS.stroke || op===OPS.fill || op===OPS.eoFill) pathOps++;
+          if(pathOps >= LINE_COUNT_DRAWING_THRESHOLD){ hasTonsOfLines = true; break; }
+        }
+      }catch(opErr){ /* if this check fails for any reason, just fall back to the text-based signal */ }
+
+      if(!hasTonsOfLines && looksLikeProse) textPages.push(p);
+      else imagePages.push(p);
+    }
+    document.getElementById('analyzeTextRanges').textContent = numbersToRanges(textPages);
+    document.getElementById('analyzeImageRanges').textContent = numbersToRanges(imagePages);
+    document.getElementById('analyzeResults').style.display = 'block';
+    document.getElementById('analyzeMsg').innerHTML = `<div class="hint" style="margin-top:8px">Checked all ${totalPages} pages, based on how coherent each page's text is (real phrases vs. scattered labels) and how many actual drawn lines it has. This is a rough guide, not a certainty \u2014 skim both lists once before fully trusting it. Type either range above into "Which pages do you want?" to pull that group out on its own.</div>`;
+  }catch(e){
+    console.error(e);
+    document.getElementById('analyzeMsg').innerHTML = '<div class="note err"><b>Hold on.</b> '+esc(e.message)+'</div>';
+  }finally{
+    btn.disabled = false;
+    document.getElementById('analyzeRunLabel').textContent = origLabel;
+    document.getElementById('analyzeSpin').style.display = 'none';
+    document.getElementById('analyzeRunHint').textContent = '';
+  }
 }
 
 async function runPagePicker(){
