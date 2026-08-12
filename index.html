@@ -2356,7 +2356,7 @@ const ITEMS_PER_CHECKLIST_PASS = 80;
 // never reused by mistake.
 const checklistPassCache = {};
 
-async function runChecklistCompareMultiPass(key, checklistType, checklistContentBlocks, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress){
+async function runChecklistCompareMultiPass(key, checklistType, checklistContentBlocks, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId){
   async function onePass(items, label){
     const findingsSummary = { project, bid_due: bidDue, items: items.map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source })) };
     const content = [
@@ -2364,7 +2364,7 @@ async function runChecklistCompareMultiPass(key, checklistType, checklistContent
       {type:"text", text:"BID FINDINGS (already extracted"+(label?(' \u2014 '+label):'')+"):\n\n"+JSON.stringify(findingsSummary, null, 2)},
       {type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."}
     ];
-    return await fetchAndParseJSON(key, content, systemPrompt, signal, null, "checklist comparison"+(label?(' ('+label+')'):''));
+    return await fetchAndParseJSON(key, content, systemPrompt, signal, hintElId, "checklist comparison"+(label?(' ('+label+')'):''));
   }
 
   const groups = [];
@@ -3219,7 +3219,7 @@ async function runMasterCheck(btn){
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against master list…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; });
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg');
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
     saveToCloud('checklist_1', parsed);
@@ -3424,7 +3424,7 @@ async function runSecondCheck(btn){
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against checklist 2…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; });
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg');
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
     saveToCloud('checklist_2', parsed);
@@ -3629,7 +3629,7 @@ async function runThirdCheck(btn){
     }
 
     btn.textContent = dwgAddendums.length ? 'Checking main drawings\u2026' : 'Checking against checklist 3…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', checklistContentBlocks, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; });
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', checklistContentBlocks, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; }, 'thirdMsg');
     lastThirdCheck = parsed;
     renderThirdCheck(parsed);
     saveToCloud('checklist_3', parsed);
