@@ -3213,9 +3213,9 @@ async function runMasterCheck(btn){
     if(usingPdf){
       const b64 = arrayBufferToBase64(new Uint8Array(masterFile.buf));
       checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST, a standing reference. Read the whole thing."});
+      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST, a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
     } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+masterText});
+      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+masterText, cache_control:{type:"ephemeral"}});
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against master list…';
@@ -3418,9 +3418,9 @@ async function runSecondCheck(btn){
     if(usingPdf){
       const b64 = arrayBufferToBase64(new Uint8Array(secondFile.buf));
       checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this bid's second, independent reference list), a standing reference. Read the whole thing."});
+      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this bid's second, independent reference list), a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
     } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+secondText});
+      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+secondText, cache_control:{type:"ephemeral"}});
     }
 
     btn.textContent = addendums.length ? 'Checking main document\u2026' : 'Checking against checklist 2…';
@@ -3623,9 +3623,9 @@ async function runThirdCheck(btn){
     if(usingPdf){
       const b64 = arrayBufferToBase64(new Uint8Array(thirdFile.buf));
       checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this project's drawing-review reference list), a standing reference. Read the whole thing."});
+      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this project's drawing-review reference list), a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
     } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+thirdText});
+      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+thirdText, cache_control:{type:"ephemeral"}});
     }
 
     btn.textContent = dwgAddendums.length ? 'Checking main drawings\u2026' : 'Checking against checklist 3…';
