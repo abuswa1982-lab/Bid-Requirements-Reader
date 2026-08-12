@@ -1364,8 +1364,9 @@ function renderAddendumsList(){
   addendums.forEach((a,idx)=>{
     const chip = document.createElement('div');
     chip.className = 'statuschip ready';
-    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;font-weight:700;margin-left:2px" title="remove">\u2715</span>`;
+    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;color:var(--blue);margin-left:6px" title="Download backup">\u2b07</span><span style="cursor:pointer;font-weight:700;margin-left:6px" title="remove">\u2715</span>`;
     chip.querySelector('span:nth-child(2)').textContent = a.name + ' \u2014 ' + (a.data.items||[]).length + ' findings';
+    chip.querySelector('span:nth-child(3)').onclick = ()=>{ downloadBackup('addendum:'+slugify(a.name), Object.assign({}, a.data, {_addendumName:a.name})); };
     chip.querySelector('span:last-child').onclick = ()=>{ addendums.splice(idx,1); renderAddendumsList(); };
     el.appendChild(chip);
   });
@@ -1727,8 +1728,9 @@ function renderDwgAddendumsList(){
   dwgAddendums.forEach((a,idx)=>{
     const chip = document.createElement('div');
     chip.className = 'statuschip ready';
-    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;font-weight:700;margin-left:2px" title="remove">\u2715</span>`;
+    chip.innerHTML = `<span class="dot"></span><span></span><span style="cursor:pointer;color:var(--blue);margin-left:6px" title="Download backup">\u2b07</span><span style="cursor:pointer;font-weight:700;margin-left:6px" title="remove">\u2715</span>`;
     chip.querySelector('span:nth-child(2)').textContent = a.name + ' \u2014 ' + (a.data.items||[]).length + ' findings';
+    chip.querySelector('span:nth-child(3)').onclick = ()=>{ downloadBackup('dwg-addendum:'+slugify(a.name), Object.assign({}, a.data, {_addendumName:a.name})); };
     chip.querySelector('span:last-child').onclick = ()=>{ dwgAddendums.splice(idx,1); renderDwgAddendumsList(); };
     el.appendChild(chip);
   });
