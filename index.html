@@ -1787,7 +1787,7 @@ async function runDwgAddendum(){
       const f = dwgAddendFiles[i];
       let batches;
       try{
-        batches = await splitIntoBatches(f.buf, pagesPerBatch);
+        batches = await splitIntoImageBatches(f.buf, pagesPerBatch);
       }catch(splitErr){
         throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
       }
@@ -1802,7 +1802,7 @@ async function runDwgAddendum(){
           'File ' + (i+1) + ' of ' + dwgAddendFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
           ', batch ' + (b+1) + ' of ' + batches.length + '\u2026';
         const content = [
-          {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
+          ...batch.images.map(img=>({type:"image",source:{type:"base64",media_type:img.mediaType,data:img.data}})),
           {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"' to the drawing set"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued drawings. Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
         ];
         const parsed = await fetchAndParseJSON(key, content, SYSTEM_DRAWINGS, dwgAddendAbort.signal, 'dwgAddendRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
@@ -1877,6 +1877,41 @@ async function splitIntoBatches(fileBuf, pagesPerBatch){
     batches.push({ b64: arrayBufferToBase64(bytes), startPage:start+1, endPage:end, totalPages });
   }
   return batches.length ? batches : [{ b64: arrayBufferToBase64(await srcDoc.save()), startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
+}
+
+// Renders each page down to a normal-sized image before sending it, instead of shipping the
+// raw PDF page as-is. Some drawing sets use genuinely oversized physical sheets (full-size
+// architectural E-sheets, 30"x42" or larger) \u2014 sending those raw seems to cause requests to
+// stall with no response at all, likely from whatever has to happen server-side to handle a
+// page that large. Rendering to a capped, reasonable resolution first sidesteps that entirely:
+// same visual content, a normal-sized payload, regardless of how big the original sheet is.
+const MAX_IMAGE_DIMENSION_PX = 1568; // Claude's vision system works natively up to about this size
+async function splitIntoImageBatches(fileBuf, pagesPerBatch){
+  const pdfjsLib = await getPdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: fileBuf.slice(0) }).promise;
+  const totalPages = pdf.numPages;
+  const step = Math.max(1, pagesPerBatch|0);
+  const batches = [];
+  for(let start=1; start<=totalPages; start+=step){
+    const end = Math.min(start+step-1, totalPages);
+    const images = [];
+    for(let p=start; p<=end; p++){
+      const page = await pdf.getPage(p);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const longSide = Math.max(baseViewport.width, baseViewport.height);
+      const scale = Math.min(1, MAX_IMAGE_DIMENSION_PX / longSide); // never upscale a small page
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(viewport.width));
+      canvas.height = Math.max(1, Math.round(viewport.height));
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      images.push({ data: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+    }
+    batches.push({ images, startPage:start, endPage:end, totalPages });
+  }
+  return batches.length ? batches : [{ images:[], startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
 }
 
 // Lazily loads pdf.js exactly once (dynamic import works fine outside a module script).
@@ -2555,7 +2590,7 @@ async function runDrawings(){
       const f = dwgFiles[i];
       let batches;
       try{
-        batches = await splitIntoBatches(f.buf, pagesPerBatch);
+        batches = await splitIntoImageBatches(f.buf, pagesPerBatch);
       }catch(splitErr){
         throw new Error("Could not read '"+f.name+"' as a PDF to split it (it may be encrypted or corrupted): "+splitErr.message);
       }
@@ -2572,7 +2607,7 @@ async function runDrawings(){
           'File ' + (i+1) + ' of ' + dwgFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
           ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
         const content = [
-          {type:"document",source:{type:"base64",media_type:"application/pdf",data:batch.b64}},
+          ...batch.images.map(img=>({type:"image",source:{type:"base64",media_type:img.mediaType,data:img.data}})),
           {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
             (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
         ];
