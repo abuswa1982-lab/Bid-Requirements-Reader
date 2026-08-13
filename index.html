@@ -3144,7 +3144,11 @@ function copyText(btn){
 }
 let lastMasterCheck = null;
 async function runMasterCheck(btn){
-  if(!lastData){ return; }
+  if(!lastData){
+    document.getElementById('masterMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> No bid findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Bid Documents tab) to bring back your saved results, or run the spec extraction on this tab first.</div>';
+    return;
+  }
   document.getElementById('masterMsg').innerHTML='';
   const usingPdf = masterMode === 'pdf';
   const masterText = document.getElementById('masterChecklist').value.trim();
@@ -3326,7 +3330,11 @@ function downloadMasterCheckPDF(btn){
 }
 let lastSecondCheck = null;
 async function runSecondCheck(btn){
-  if(!lastData){ return; }
+  if(!lastData){
+    document.getElementById('secondMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> No bid findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Bid Documents tab) to bring back your saved results, or run the spec extraction on this tab first.</div>';
+    return;
+  }
   document.getElementById('secondMsg').innerHTML='';
   const usingPdf = secondMode === 'pdf';
   const secondText = document.getElementById('secondChecklist').value.trim();
@@ -3508,7 +3516,11 @@ function downloadSecondCheckPDF(btn){
 }
 let lastThirdCheck = null;
 async function runThirdCheck(btn){
-  if(!lastDwgData){ return; }
+  if(!lastDwgData){
+    document.getElementById('thirdMsg').innerHTML =
+      '<div class="note err"><b>Hold on.</b> No drawing findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Drawings tab) to bring back your saved results, or process your drawings on this tab first.</div>';
+    return;
+  }
   document.getElementById('thirdMsg').innerHTML='';
   const usingPdf = thirdMode === 'pdf';
   const thirdText = document.getElementById('thirdChecklist').value.trim();
