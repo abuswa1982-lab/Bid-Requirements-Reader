@@ -1709,6 +1709,27 @@ function arrayBufferToBase64(bytes){
   }
   return btoa(binary);
 }
+// Cheap, fast, deterministic fingerprint (FNV-1a, not cryptographic — doesn't need to be, it
+// only has to tell "this is the same source I already saw" from "this is different"). Used so
+// caches can key on the ACTUAL content of a checklist or a findings chunk instead of something
+// coincidental like item count, which could quietly reuse a stale, wrong answer for content that
+// has genuinely changed — exactly the kind of silent error an estimating tool can't afford.
+function fnv1aString(str){
+  let h = 0x811c9dc5;
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h>>>0).toString(16);
+}
+function fnv1aBytes(bytes){
+  let h = 0x811c9dc5;
+  for(let i=0;i<bytes.length;i++){
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h>>>0).toString(16);
+}
 async function splitIntoBatches(fileBuf, pagesPerBatch){
   const { PDFDocument } = PDFLib;
   const srcDoc = await PDFDocument.load(fileBuf.slice(0), {ignoreEncryption:true});
@@ -1892,6 +1913,19 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
     }
   ]
 }`;
+const SYSTEM_CHECKLIST_EXTRACT = `You are converting a reference checklist document into a compact, structured list of its individual requirements or line items, so this checklist can be compared against many different bids' findings later without re-reading the original document every single time.
+Read the entire attached checklist. Extract every distinct requirement, category, or line item a bid could ever be checked against — the same granularity a human reviewer would actually check off one at a time. Do not summarize, merge similar items together, or condense sections into one line; keep them separate exactly as a person ticking down the list would see them.
+RULES:
+1. Extract only what is actually in the document. Do not invent, infer, or add items that are not there.
+2. Keep "item" short and specific — plain language, the actual requirement, not a paraphrase of a whole section.
+3. If the document has its own section numbers, form numbers, or item numbers, put that in "ref". If not, leave "ref" as an empty string — do not invent numbering.
+4. Assign each item a short stable "id" (its own number/letter from the document if it has one, otherwise just 1, 2, 3, ... in reading order).
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "items": [
+    { "id": "string", "item": "short specific requirement or line item", "ref": "section/form number if present in the document, else empty string" }
+  ]
+}`;
 const ORDER_DWG = ["Human Review Items","Hidden Scope Flags","Scope Items","Keynote & Legend Items"];
 const WATCH_BUCKETS_DWG = new Set(["Human Review Items","Hidden Scope Flags"]);
 const SYSTEM_DRAWINGS = `You are a senior construction estimator reading a drawing set for a plumbing/mechanical contractor, separately from the front-end spec. Your job is to find scope that the drawings show or imply, that a bid built only from the spec text could easily miss.
@@ -2029,37 +2063,107 @@ function timeoutAfter(ms, signal){
     if(signal) signal.addEventListener('abort', ()=>{ clearTimeout(t); }, {once:true});
   });
 }
+// Sends the request with stream:true and reads it as Server-Sent Events instead of waiting
+// for one single complete response. This is the actual fix for "stalled, no response, retrying
+// (attempt 4 of 4)" happening over and over on the same checklist/drawing batch: a NON-streaming
+// request has to sit completely silent, with zero bytes crossing the wire, for the entire time
+// the model is generating — and a big combined request (an attached checklist PDF plus a large
+// chunk of findings, asked to produce a long structured answer) can genuinely take the model
+// longer than 2 minutes to finish generating, especially cold (no prompt-cache hit yet). The old
+// code had no way to tell "still working, just slow" apart from "actually hung," so it killed
+// and retried anything past 2 minutes — and since a retry re-sends the exact same oversized
+// request, it hit the exact same 2-minute wall every single time. Streaming fixes this at the
+// root: bytes start arriving as soon as the model produces its first tokens, so a genuinely slow
+// (but working) generation keeps the connection alive and is never mistaken for a stall. Only a
+// true stall — no bytes at all for a stretch — now triggers the timeout/retry path, and it
+// resets on every chunk received rather than being one fixed clock for the whole response.
+async function streamOneAttempt(key, content, systemPrompt, signal, hintElId, idleTimeoutMs){
+  const fetchPromise = fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-api-key":key,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:systemPrompt, messages:[{role:"user",content}], stream:true })
+  });
+  const res = await Promise.race([ raceWithStop(fetchPromise, signal), timeoutAfter(idleTimeoutMs, signal) ]);
+  if(!res.ok || !res.body){
+    // Request-level errors (bad key, bad request, rate limit before streaming even starts)
+    // come back as a normal, non-streamed JSON body — pass the Response straight through
+    // unchanged, exactly like the old non-streaming path did.
+    return res;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let fullText = '';
+  let stopReason = null;
+  let sawErrorEvent = null;
+  try{
+    while(true){
+      let chunk;
+      try{
+        chunk = await Promise.race([ raceWithStop(reader.read(), signal), timeoutAfter(idleTimeoutMs, signal) ]);
+      }catch(e){
+        if(e.message === 'REQUEST_TIMEOUT'){ try{ reader.cancel(); }catch(_){} }
+        throw e;
+      }
+      const { done, value } = chunk;
+      if(done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop(); // last line may be a partial line split across chunks — keep it for next time
+      for(const line of lines){
+        if(!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if(!payload || payload === '[DONE]') continue;
+        let evt;
+        try{ evt = JSON.parse(payload); }catch(_){ continue; }
+        if(evt.type === 'content_block_delta' && evt.delta && evt.delta.type === 'text_delta'){
+          fullText += evt.delta.text;
+        } else if(evt.type === 'message_delta' && evt.delta && evt.delta.stop_reason){
+          stopReason = evt.delta.stop_reason;
+        } else if(evt.type === 'error'){
+          sawErrorEvent = evt.error || evt;
+        }
+      }
+    }
+  } catch(e){
+    if(e.message === 'REQUEST_TIMEOUT' && fullText){
+      // We had real progress before it went silent — surface what we have so the caller's
+      // "stopped partway, progress saved" handling can use it instead of losing it outright.
+      throw Object.assign(new Error('REQUEST_TIMEOUT'), { partialText: fullText });
+    }
+    throw e;
+  }
+  if(sawErrorEvent){
+    return new Response(JSON.stringify(sawErrorEvent), {status: 529, headers:{'content-type':'application/json'}});
+  }
+  return new Response(JSON.stringify({ content:[{type:'text', text: fullText}], stop_reason: stopReason }), {status:200, headers:{'content-type':'application/json'}});
+}
 async function fetchWithRetry(key, content, systemPrompt, signal, hintElId){
   if(systemPrompt === undefined) systemPrompt = SYSTEM;
   const maxAttempts = 4;
   const delays = [5000, 15000, 30000]; // fallback backoff if no retry-after header
   const retryableStatus = new Set([429, 500, 502, 503, 529]); // 529 = Anthropic "overloaded"
-  const REQUEST_TIMEOUT_MS = 120000; // 2 minutes with genuinely no response = treat as stalled
+  const IDLE_TIMEOUT_MS = 90000; // 90s with ZERO bytes received (not total response time) = treat as stalled — generous because a big attached checklist PDF can take a while to be ingested before the first byte streams back
   for(let attempt=0; attempt<maxAttempts; attempt++){
     // Note: the AbortSignal is deliberately NOT passed into fetch()'s own options here.
     // Some sandboxed preview environments instrument window.fetch and try to relay the
     // call via postMessage, which throws because AbortSignal objects can't be cloned that
     // way. Racing the fetch promise against the signal instead gives the same "Stop" behavior
     // (the app treats it as stopped immediately) without handing the signal to fetch itself.
-    const fetchPromise = fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "x-api-key":key,
-        "anthropic-version":"2023-06-01",
-        "anthropic-dangerous-direct-browser-access":"true"
-      },
-      body:JSON.stringify({ model:MODEL, max_tokens:MAX_TOKENS, system:systemPrompt, messages:[{role:"user",content}] })
-    });
     let res;
     try{
-      res = await Promise.race([ raceWithStop(fetchPromise, signal), timeoutAfter(REQUEST_TIMEOUT_MS, signal) ]);
+      res = await streamOneAttempt(key, content, systemPrompt, signal, hintElId, IDLE_TIMEOUT_MS);
     }catch(e){
       if(e.message !== 'REQUEST_TIMEOUT') throw e; // real errors (network, Stop) pass straight through
-      if(attempt === maxAttempts-1) throw new Error("The request stalled — connected but never got a response, for over "+Math.round(REQUEST_TIMEOUT_MS/60000)+" minutes, after "+maxAttempts+" attempts. This can happen with a flaky connection. Try again once your connection is stable.");
+      if(attempt === maxAttempts-1) throw new Error("The request stalled — no data came back at all for over "+Math.round(IDLE_TIMEOUT_MS/1000)+" seconds, after "+maxAttempts+" attempts. This is a genuinely dead connection (not just a slow response, which streaming now tolerates), and usually means a flaky connection or something between this browser and Anthropic dropping the request. Try again once your connection is stable, or try a smaller batch.");
       const waitMs = delays[Math.min(attempt, delays.length-1)];
       const hintEl = hintElId ? document.getElementById(hintElId) : null;
-      if(hintEl) hintEl.textContent = 'That request stalled with no response, waiting '+Math.round(waitMs/1000)+'s and retrying automatically (attempt '+(attempt+2)+' of '+maxAttempts+')…';
+      if(hintEl) hintEl.textContent = 'That request stalled with no data at all, waiting '+Math.round(waitMs/1000)+'s and retrying automatically (attempt '+(attempt+2)+' of '+maxAttempts+')…';
       await sleepWithStop(waitMs, signal);
       continue;
     }
@@ -2159,6 +2263,11 @@ function chunkArray(arr, size){
 // likely to stall or time out, at the cost of a few more total API calls than one combined
 // request would have made.
 const ITEMS_PER_CHECKLIST_PASS = 80;
+// Drawing findings (Checklist 3) carry more text per item on average than spec findings —
+// category, topic, requirement, detail, source/sheet references — so the same chunk size
+// asks the model to cross-reference noticeably more text against the checklist in one pass.
+// Smaller chunks here trade a few more API calls for meaningfully lower per-request latency.
+const ITEMS_PER_DWG_CHECKLIST_PASS = 30;
 // Caches successful chunk results so if a later chunk fails, retrying doesn't re-pay for and
 // re-risk-stalling the chunks that already succeeded — same spirit as Resume from page for
 // document reads, just applied to checklist comparison chunks instead of PDF pages.
@@ -2186,23 +2295,68 @@ function clearChecklistPassCache(){
   checklistPassCache = {};
   try{ localStorage.removeItem(CHECKLIST_PASS_CACHE_KEY); }catch(e){ /* ignore */ }
 }
-async function runChecklistCompareMultiPass(key, checklistType, checklistContentBlocks, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId){
+// Structured-checklist cache: extracting a checklist PDF/text into a compact JSON list is a
+// standing, reusable reference (the app already treats Checklist 1/2/3 that way — "set this up
+// once"), so this is intentionally NOT scoped to a project. It's keyed purely on a fingerprint
+// of the actual source bytes/text, so the exact same checklist attached to ten different bids
+// only ever gets extracted once, ever — and a genuinely different or edited checklist (even one
+// with the same page count) gets its own fresh extraction instead of silently reusing someone
+// else's.
+const CHECKLIST_STRUCT_CACHE_KEY = 'modonix_checklist_struct_cache';
+let checklistStructCache = {};
+(function initChecklistStructCache(){
+  try{
+    const saved = localStorage.getItem(CHECKLIST_STRUCT_CACHE_KEY);
+    if(saved) checklistStructCache = JSON.parse(saved) || {};
+  }catch(e){ checklistStructCache = {}; }
+})();
+function saveChecklistStructCache(){
+  try{ localStorage.setItem(CHECKLIST_STRUCT_CACHE_KEY, JSON.stringify(checklistStructCache)); }
+  catch(e){ /* ignore */ }
+}
+// Turns a checklist PDF or pasted text into a compact structured list ONCE per distinct source,
+// then reuses it on every later comparison pass. This replaces re-attaching the full original
+// PDF to every single comparison request (main document, each addendum part, etc.) — which was
+// both slower (more bytes to upload and ingest on every pass) and needless once the checklist's
+// actual content has already been read and captured.
+async function getStructuredChecklist(key, usingPdf, fileBuf, pastedText, signal, hintElId){
+  const sourceSig = usingPdf
+    ? 'pdf:'+fileBuf.byteLength+':'+fnv1aBytes(new Uint8Array(fileBuf))
+    : 'text:'+fnv1aString(pastedText);
+  if(checklistStructCache[sourceSig]) return checklistStructCache[sourceSig];
+  const content = usingPdf
+    ? [ {type:"document", source:{type:"base64", media_type:"application/pdf", data: arrayBufferToBase64(new Uint8Array(fileBuf))}},
+        {type:"text", text:"Extract this checklist as instructed. Return the JSON schema only."} ]
+    : [ {type:"text", text:"CHECKLIST TEXT:\n\n"+pastedText},
+        {type:"text", text:"Extract this checklist as instructed. Return the JSON schema only."} ];
+  const parsed = await fetchAndParseJSON(key, content, SYSTEM_CHECKLIST_EXTRACT, signal, hintElId, "checklist extraction");
+  const items = parsed.items||[];
+  checklistStructCache[sourceSig] = items;
+  saveChecklistStructCache();
+  return items;
+}
+async function runChecklistCompareMultiPass(key, checklistType, structuredChecklist, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId, itemsPerPass){
+  itemsPerPass = itemsPerPass || ITEMS_PER_CHECKLIST_PASS;
+  // The structured checklist is small (a JSON list of {id, item, ref}), so it's cheap to send
+  // as plain text on every pass — this is what replaces resending the original PDF every time.
+  const checklistBlock = {type:"text", text:"MASTER CHECKLIST (already extracted into structured items):\n\n"+JSON.stringify(structuredChecklist, null, 2), cache_control:{type:"ephemeral"}};
+  const checklistFingerprint = fnv1aString(JSON.stringify(structuredChecklist));
   async function onePass(items, label){
     const findingsSummary = { project, bid_due: bidDue, items: items.map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source })) };
     const content = [
-      ...checklistContentBlocks,
+      checklistBlock,
       {type:"text", text:"BID FINDINGS (already extracted"+(label?(' — '+label):'')+"):\n\n"+JSON.stringify(findingsSummary, null, 2)},
       {type:"text", text:"Compare the Bid Findings against the Master Checklist as instructed. Return the JSON schema only."}
     ];
     return await fetchAndParseJSON(key, content, systemPrompt, signal, hintElId, "checklist comparison"+(label?(' ('+label+')'):''));
   }
   const groups = [];
-  chunkArray(mainItems||[], ITEMS_PER_CHECKLIST_PASS).forEach((chunk,i,arr)=>{
+  chunkArray(mainItems||[], itemsPerPass).forEach((chunk,i,arr)=>{
     groups.push({ items: chunk, label: arr.length>1 ? 'main document, part '+(i+1)+' of '+arr.length : 'main document' });
   });
   (addendaList||[]).forEach(a=>{
     const taggedItems = (a.data.items||[]).map(it=>Object.assign({}, it, { source: '['+a.name+'] '+(it.source||'') }));
-    chunkArray(taggedItems, ITEMS_PER_CHECKLIST_PASS).forEach((chunk,i,arr)=>{
+    chunkArray(taggedItems, itemsPerPass).forEach((chunk,i,arr)=>{
       groups.push({ items: chunk, label: arr.length>1 ? a.name+', part '+(i+1)+' of '+arr.length : a.name });
     });
   });
@@ -2215,7 +2369,11 @@ async function runChecklistCompareMultiPass(key, checklistType, checklistContent
   let completedCount = 0;
   for(let g=0; g<groups.length; g++){
     if(onProgress) onProgress(g+1, groups.length, groups[g].label, completedCount);
-    const cacheKey = cacheProjectKey+'::'+checklistType+'::'+groups[g].label+'::'+groups[g].items.length;
+    // Fingerprints the ACTUAL findings content and the ACTUAL checklist content, not just their
+    // counts — two runs with the same number of items but different content (a corrected
+    // finding, an edited checklist) now get their own cache entries instead of one silently
+    // reusing the other's stale answer.
+    const cacheKey = cacheProjectKey+'::'+checklistType+'::checklist-'+checklistFingerprint+'::'+groups[g].label+'::'+fnv1aString(JSON.stringify(groups[g].items));
     let result;
     try{
       if(checklistPassCache[cacheKey]){
@@ -2988,16 +3146,10 @@ async function runMasterCheck(btn){
   masterCheckAbort = new AbortController();
   document.getElementById('masterCheckStop').classList.add('show');
   try{
-    const checklistContentBlocks = [];
-    if(usingPdf){
-      const b64 = arrayBufferToBase64(new Uint8Array(masterFile.buf));
-      checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST, a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
-    } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+masterText, cache_control:{type:"ephemeral"}});
-    }
+    btn.textContent = 'Reading checklist 1…';
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? masterFile.buf : null, usingPdf ? null : masterText, masterCheckAbort.signal, 'masterMsg');
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against master list…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg');
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg');
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
     saveToCloud('checklist_1', parsed);
@@ -3176,16 +3328,10 @@ async function runSecondCheck(btn){
   secondCheckAbort = new AbortController();
   document.getElementById('secondCheckStop').classList.add('show');
   try{
-    const checklistContentBlocks = [];
-    if(usingPdf){
-      const b64 = arrayBufferToBase64(new Uint8Array(secondFile.buf));
-      checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this bid's second, independent reference list), a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
-    } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+secondText, cache_control:{type:"ephemeral"}});
-    }
+    btn.textContent = 'Reading checklist 2…';
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? secondFile.buf : null, usingPdf ? null : secondText, secondCheckAbort.signal, 'secondMsg');
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against checklist 2…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', checklistContentBlocks, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg');
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg');
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
     saveToCloud('checklist_2', parsed);
@@ -3364,16 +3510,10 @@ async function runThirdCheck(btn){
   thirdCheckAbort = new AbortController();
   document.getElementById('thirdCheckStop').classList.add('show');
   try{
-    const checklistContentBlocks = [];
-    if(usingPdf){
-      const b64 = arrayBufferToBase64(new Uint8Array(thirdFile.buf));
-      checklistContentBlocks.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:b64}});
-      checklistContentBlocks.push({type:"text", text:"The attached document is the MASTER CHECKLIST (this project's drawing-review reference list), a standing reference. Read the whole thing.", cache_control:{type:"ephemeral"}});
-    } else {
-      checklistContentBlocks.push({type:"text", text:"MASTER CHECKLIST:\n\n"+thirdText, cache_control:{type:"ephemeral"}});
-    }
+    btn.textContent = 'Reading checklist 3…';
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? thirdFile.buf : null, usingPdf ? null : thirdText, thirdCheckAbort.signal, 'thirdMsg');
     btn.textContent = dwgAddendums.length ? 'Checking main drawings…' : 'Checking against checklist 3…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', checklistContentBlocks, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; }, 'thirdMsg');
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', structuredChecklist, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; }, 'thirdMsg', ITEMS_PER_DWG_CHECKLIST_PASS);
     lastThirdCheck = parsed;
     renderThirdCheck(parsed);
     saveToCloud('checklist_3', parsed);
