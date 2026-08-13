@@ -475,8 +475,10 @@
       <button class="btn2 primary" onclick="downloadExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyText(this)">Copy as checklist</button>
       <button class="btn2" id="masterCheckBtn" onclick="runMasterCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 1</button>
+      <button class="btn2" onclick="runMasterCheck(this,true)" title="Ignores cache: re-reads the checklist PDF and recomputes every comparison from scratch. Use this after editing your checklist or findings, to be certain you're not seeing an old cached answer.">Force Fresh Run</button>
       <button class="stopbtn" id="masterCheckStop" onclick="stopMasterCheck()" type="button">Stop</button>
       <button class="btn2" id="secondCheckBtn" onclick="runSecondCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 2</button>
+      <button class="btn2" onclick="runSecondCheck(this,true)" title="Ignores cache: re-reads the checklist PDF and recomputes every comparison from scratch. Use this after editing your checklist or findings, to be certain you're not seeing an old cached answer.">Force Fresh Run</button>
       <button class="stopbtn" id="secondCheckStop" onclick="stopSecondCheck()" type="button">Stop</button>
     </div>
     <div id="masterMsg"></div>
@@ -637,6 +639,7 @@
       <button class="btn2 primary" onclick="downloadDwgExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyDwgText(this)">Copy as checklist</button>
       <button class="btn2" id="thirdCheckBtn" onclick="runThirdCheck(this)" style="border-color:var(--blue);color:var(--blue)">Check Against Checklist 3</button>
+      <button class="btn2" onclick="runThirdCheck(this,true)" title="Ignores cache: re-reads the checklist PDF and recomputes every comparison from scratch. Use this after editing your checklist or drawings, to be certain you're not seeing an old cached answer.">Force Fresh Run</button>
       <button class="stopbtn" id="thirdCheckStop" onclick="stopThirdCheck()" type="button">Stop</button>
     </div>
   </div>
@@ -2216,6 +2219,23 @@ function normalizeItemKey(s){
 // Covered, the merged result says Covered; it only reads Missing if neither pass found it
 // anywhere. This is what makes splitting a big comparison into smaller passes safe: the passes
 // can never silently contradict or duplicate each other in what the person actually sees.
+// Renders the completion proof for a checklist coverage result — see the `_run` field built in
+// runChecklistCompareMultiPass. Without this, there was no way to look at a finished report and
+// tell whether every comparison pass actually ran, or whether it quietly saved a partial result
+// after an error. A result saved before this existed has no `_run` field at all; in that case we
+// say nothing rather than falsely calling old, perfectly good data "incomplete."
+function runStatusBannerHtml(run){
+  if(!run) return '';
+  if(run.status === 'complete'){
+    return '<div class="note" style="background:#E9F5EC;border:1px solid #A8D5B5;color:#1E5631;margin-bottom:14px">'
+      + '<b>CHECKLIST COMPLETE.</b> '+run.findings_total+' finding'+(run.findings_total===1?'':'s')+' checked across '+run.addendums+' addendum'+(run.addendums===1?'':'s')+', '
+      + run.completed_chunks+' of '+run.total_chunks+' comparison pass'+(run.total_chunks===1?'':'es')+' completed, '
+      + run.checklist_items+' checklist item'+(run.checklist_items===1?'':'s')+' evaluated.</div>';
+  }
+  return '<div class="note err" style="margin-bottom:14px">'
+    + '<b>CHECKLIST INCOMPLETE — DO NOT RELY ON THIS RESULT.</b> Only '+run.completed_chunks+' of '+run.total_chunks+' comparison passes finished before it stopped. '
+    + 'Click the check button again to pick up where it left off — the parts already done are cached and won\'t be re-run.</div>';
+}
 function mergeCoverageResults(a, b){
   const rank = { 'Covered':2, 'Not Applicable':1, 'Missing':0 };
   const byKey = {};
@@ -2343,11 +2363,11 @@ function saveChecklistStructCache(){
 // PDF to every single comparison request (main document, each addendum part, etc.) — which was
 // both slower (more bytes to upload and ingest on every pass) and needless once the checklist's
 // actual content has already been read and captured.
-async function getStructuredChecklist(key, usingPdf, fileBuf, pastedText, signal, hintElId){
+async function getStructuredChecklist(key, usingPdf, fileBuf, pastedText, signal, hintElId, forceFresh){
   const sourceSig = usingPdf
     ? 'pdf:'+fileBuf.byteLength+':'+fnv1aBytes(new Uint8Array(fileBuf))
     : 'text:'+fnv1aString(pastedText);
-  if(checklistStructCache[sourceSig]) return checklistStructCache[sourceSig];
+  if(!forceFresh && checklistStructCache[sourceSig]) return checklistStructCache[sourceSig];
   const content = usingPdf
     ? [ {type:"document", source:{type:"base64", media_type:"application/pdf", data: arrayBufferToBase64(new Uint8Array(fileBuf))}},
         {type:"text", text:"Extract this checklist as instructed. Return the JSON schema only."} ]
@@ -2359,7 +2379,7 @@ async function getStructuredChecklist(key, usingPdf, fileBuf, pastedText, signal
   saveChecklistStructCache();
   return items;
 }
-async function runChecklistCompareMultiPass(key, checklistType, structuredChecklist, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId, itemsPerPass){
+async function runChecklistCompareMultiPass(key, checklistType, structuredChecklist, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId, itemsPerPass, forceFresh){
   itemsPerPass = itemsPerPass || ITEMS_PER_CHECKLIST_PASS;
   // The structured checklist is small (a JSON list of {id, item, ref}), so it's cheap to send
   // as plain text on every pass — this is what replaces resending the original PDF every time.
@@ -2391,6 +2411,22 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
   const cacheProjectKey = (document.getElementById('cloudProject').value.trim() || project || 'untitled');
   let merged = null;
   let completedCount = 0;
+  // Total findings actually going into this run, across the main document and every addendum —
+  // part of the audit trail below, so a saved result can be checked against what it claims to
+  // have covered, not just trusted on faith.
+  const findingsTotal = (mainItems||[]).length + (addendaList||[]).reduce((s,a)=>s+((a.data.items||[]).length),0);
+  function buildRunMeta(status){
+    return {
+      status: status,
+      checklist_items: (structuredChecklist||[]).length,
+      checklist_fingerprint: checklistFingerprint,
+      findings_total: findingsTotal,
+      addendums: (addendaList||[]).length,
+      total_chunks: groups.length,
+      completed_chunks: completedCount,
+      completed_at: new Date().toISOString()
+    };
+  }
   for(let g=0; g<groups.length; g++){
     if(onProgress) onProgress(g+1, groups.length, groups[g].label, completedCount);
     // Fingerprints the ACTUAL findings content and the ACTUAL checklist content, not just their
@@ -2400,7 +2436,7 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
     const cacheKey = cacheProjectKey+'::'+checklistType+'::checklist-'+checklistFingerprint+'::'+groups[g].label+'::'+fnv1aString(JSON.stringify(groups[g].items));
     let result;
     try{
-      if(checklistPassCache[cacheKey]){
+      if(!forceFresh && checklistPassCache[cacheKey]){
         result = checklistPassCache[cacheKey]; // already succeeded on a prior attempt — free, no re-risk
       } else {
         result = await onePass(groups[g].items, groups[g].label);
@@ -2409,8 +2445,10 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
       }
     }catch(e){
       // Don't throw away chunks that already succeeded — attach what's done so far to the
-      // error so the caller can show and save it, instead of losing that work entirely.
-      e.partialCoverage = merged;
+      // error so the caller can show and save it, instead of losing that work entirely. Tag it
+      // as incomplete so it can never be mistaken for a finished result later, in this session
+      // or after a reload.
+      e.partialCoverage = merged ? Object.assign({}, merged, { _run: buildRunMeta('incomplete') }) : null;
       e.completedChunks = completedCount;
       e.totalChunks = groups.length;
       throw e;
@@ -2418,7 +2456,11 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
     merged = merged ? mergeCoverageResults(merged, result) : result;
     completedCount++;
   }
-  return merged;
+  // _run is the audit trail: proof this result actually finished every comparison pass it was
+  // supposed to, not just an absence-of-error-message inference. Every consumer of this result
+  // (the render functions, Kickoff Sheet, a human checking it later) can check _run.status
+  // instead of having to trust that "no error" meant "ran to completion."
+  return Object.assign({}, merged, { _run: buildRunMeta('complete') });
 }
 function mergeResults(results){
   const rank = {GREEN:0, YELLOW:1, RED:2};
@@ -3143,7 +3185,7 @@ function copyText(btn){
   }
 }
 let lastMasterCheck = null;
-async function runMasterCheck(btn){
+async function runMasterCheck(btn, forceFresh){
   if(!lastData){
     document.getElementById('masterMsg').innerHTML =
       '<div class="note err"><b>Hold on.</b> No bid findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Bid Documents tab) to bring back your saved results, or run the spec extraction on this tab first.</div>';
@@ -3175,9 +3217,9 @@ async function runMasterCheck(btn){
   document.getElementById('masterCheckStop').classList.add('show');
   try{
     btn.textContent = 'Reading checklist 1…';
-    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? masterFile.buf : null, usingPdf ? null : masterText, masterCheckAbort.signal, 'masterMsg');
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? masterFile.buf : null, usingPdf ? null : masterText, masterCheckAbort.signal, 'masterMsg', forceFresh);
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against master list…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg');
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg', undefined, forceFresh);
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
     saveToCloud('checklist_1', parsed);
@@ -3207,6 +3249,7 @@ function renderMasterCheck(d){
   const na = coverage.filter(i=>i.status==='Not Applicable');
   const s = document.getElementById('masterCheckSummary');
   s.innerHTML = `
+    ${runStatusBannerHtml(d._run)}
     <div class="proj">
       <div class="pl">Checklist 1 Coverage</div>
       <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
@@ -3329,7 +3372,7 @@ function downloadMasterCheckPDF(btn){
   }
 }
 let lastSecondCheck = null;
-async function runSecondCheck(btn){
+async function runSecondCheck(btn, forceFresh){
   if(!lastData){
     document.getElementById('secondMsg').innerHTML =
       '<div class="note err"><b>Hold on.</b> No bid findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Bid Documents tab) to bring back your saved results, or run the spec extraction on this tab first.</div>';
@@ -3361,9 +3404,9 @@ async function runSecondCheck(btn){
   document.getElementById('secondCheckStop').classList.add('show');
   try{
     btn.textContent = 'Reading checklist 2…';
-    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? secondFile.buf : null, usingPdf ? null : secondText, secondCheckAbort.signal, 'secondMsg');
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? secondFile.buf : null, usingPdf ? null : secondText, secondCheckAbort.signal, 'secondMsg', forceFresh);
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against checklist 2…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg');
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg', undefined, forceFresh);
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
     saveToCloud('checklist_2', parsed);
@@ -3393,6 +3436,7 @@ function renderSecondCheck(d){
   const na = coverage.filter(i=>i.status==='Not Applicable');
   const s = document.getElementById('secondCheckSummary');
   s.innerHTML = `
+    ${runStatusBannerHtml(d._run)}
     <div class="proj">
       <div class="pl">Checklist 2 Coverage</div>
       <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
@@ -3515,7 +3559,7 @@ function downloadSecondCheckPDF(btn){
   }
 }
 let lastThirdCheck = null;
-async function runThirdCheck(btn){
+async function runThirdCheck(btn, forceFresh){
   if(!lastDwgData){
     document.getElementById('thirdMsg').innerHTML =
       '<div class="note err"><b>Hold on.</b> No drawing findings loaded yet. If you just reloaded the page, click <b>Load</b> next to your project name (Drawings tab) to bring back your saved results, or process your drawings on this tab first.</div>';
@@ -3547,9 +3591,9 @@ async function runThirdCheck(btn){
   document.getElementById('thirdCheckStop').classList.add('show');
   try{
     btn.textContent = 'Reading checklist 3…';
-    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? thirdFile.buf : null, usingPdf ? null : thirdText, thirdCheckAbort.signal, 'thirdMsg');
+    const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? thirdFile.buf : null, usingPdf ? null : thirdText, thirdCheckAbort.signal, 'thirdMsg', forceFresh);
     btn.textContent = dwgAddendums.length ? 'Checking main drawings…' : 'Checking against checklist 3…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', structuredChecklist, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; }, 'thirdMsg', ITEMS_PER_DWG_CHECKLIST_PASS);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_3', structuredChecklist, lastDwgData.items||[], dwgAddendums, lastDwgData.project, null, SYSTEM_MASTERCHECK, thirdCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 3…'; }, 'thirdMsg', ITEMS_PER_DWG_CHECKLIST_PASS, forceFresh);
     lastThirdCheck = parsed;
     renderThirdCheck(parsed);
     saveToCloud('checklist_3', parsed);
@@ -3579,6 +3623,7 @@ function renderThirdCheck(d){
   const na = coverage.filter(i=>i.status==='Not Applicable');
   const s = document.getElementById('thirdCheckSummary');
   s.innerHTML = `
+    ${runStatusBannerHtml(d._run)}
     <div class="proj">
       <div class="pl">Checklist 3 Coverage</div>
       <div class="pv" style="font-size:15px;font-weight:500;line-height:1.4">${esc(d.summary||'')}</div>
