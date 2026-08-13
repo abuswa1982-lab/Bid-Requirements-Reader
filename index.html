@@ -2236,6 +2236,33 @@ function runStatusBannerHtml(run){
     + '<b>CHECKLIST INCOMPLETE — DO NOT RELY ON THIS RESULT.</b> Only '+run.completed_chunks+' of '+run.total_chunks+' comparison passes finished before it stopped. '
     + 'Click the check button again to pick up where it left off — the parts already done are cached and won\'t be re-run.</div>';
 }
+// Strips the internal _run audit field before a checklist result gets sent to the AI as input
+// (e.g. into the Kickoff Sheet prompt) — that field is for humans reading this app's UI, not
+// part of the documented coverage schema the model expects.
+function stripRun(obj){
+  if(!obj) return obj;
+  const c = Object.assign({}, obj);
+  delete c._run;
+  return c;
+}
+// Same idea as runStatusBannerHtml, for the Kickoff Sheet: proof of exactly which prior outputs
+// it was actually built from (Kickoff intentionally works with whatever's available, so "missing"
+// isn't an error by itself), plus a real warning if any of those inputs were themselves saved as
+// an incomplete checklist run — a kickoff read built on a half-finished checklist coverage report
+// shouldn't be trusted at face value.
+function kickoffRunStatusBannerHtml(run){
+  if(!run) return '';
+  let html = '<div class="note" style="background:#E9F5EC;border:1px solid #A8D5B5;color:#1E5631;margin-bottom:14px">'
+    + '<b>KICKOFF COMPLETE.</b> Built from: '+esc(run.inputs_used.length ? run.inputs_used.join(', ') : 'nothing')+'.';
+  if(run.inputs_missing.length){
+    html += ' Not run yet, so not included: '+esc(run.inputs_missing.join(', '))+'.';
+  }
+  html += '</div>';
+  if(run.incomplete_inputs && run.incomplete_inputs.length){
+    html += '<div class="note err" style="margin-bottom:14px"><b>WARNING.</b> '+esc(run.incomplete_inputs.join(', '))+' '+(run.incomplete_inputs.length===1?'was':'were')+' still marked INCOMPLETE when this kickoff was generated. Rerun '+(run.incomplete_inputs.length===1?'it':'them')+' to a full CHECKLIST COMPLETE, then regenerate this kickoff sheet for a read you can actually rely on.</div>';
+  }
+  return html;
+}
 function mergeCoverageResults(a, b){
   const rank = { 'Covered':2, 'Not Applicable':1, 'Missing':0 };
   const byKey = {};
@@ -3784,11 +3811,27 @@ async function runKickoff(){
   kickoffAbort = new AbortController();
   try{
     const payload = { project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
+    // Tracks exactly which of the five possible inputs actually went into this kickoff, and flags
+    // any that were themselves saved as an incomplete checklist run — same audit-trail idea as the
+    // checklist COMPLETE/INCOMPLETE banners, applied one level up.
+    const inputLabels = { spec_extraction:'Spec Extraction', checklist_1_coverage:'Checklist 1', checklist_2_coverage:'Checklist 2', drawing_extraction:'Drawing Extraction', checklist_3_coverage:'Checklist 3' };
+    const incompleteInputs = [];
     if(lastData) payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:combinedBidItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
-    if(lastMasterCheck) payload.checklist_1_coverage = lastMasterCheck;
-    if(lastSecondCheck) payload.checklist_2_coverage = lastSecondCheck;
+    if(lastMasterCheck){
+      payload.checklist_1_coverage = stripRun(lastMasterCheck);
+      if(lastMasterCheck._run && lastMasterCheck._run.status==='incomplete') incompleteInputs.push('Checklist 1');
+    }
+    if(lastSecondCheck){
+      payload.checklist_2_coverage = stripRun(lastSecondCheck);
+      if(lastSecondCheck._run && lastSecondCheck._run.status==='incomplete') incompleteInputs.push('Checklist 2');
+    }
     if(lastDwgData) payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:combinedDwgItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source,is_watchout:i.is_watchout})) };
-    if(lastThirdCheck) payload.checklist_3_coverage = lastThirdCheck;
+    if(lastThirdCheck){
+      payload.checklist_3_coverage = stripRun(lastThirdCheck);
+      if(lastThirdCheck._run && lastThirdCheck._run.status==='incomplete') incompleteInputs.push('Checklist 3');
+    }
+    const inputsUsed = Object.keys(inputLabels).filter(k=>k in payload).map(k=>inputLabels[k]);
+    const inputsMissing = Object.keys(inputLabels).filter(k=>!(k in payload)).map(k=>inputLabels[k]);
     const content = [
       {type:"text", text:"Here are the available prior outputs for this project, as JSON:\n\n"+JSON.stringify(payload, null, 2)},
       {type:"text", text:"Produce the Bid Kickoff Sheet as instructed. Return the JSON schema only."}
@@ -3802,9 +3845,15 @@ async function runKickoff(){
     const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
     const parsed = parseJSON(text);
     if(!parsed){ throw new Error("Could not read the kickoff sheet response. Raw output:\n\n"+text.slice(0,400)); }
-    lastKickoff = parsed;
-    renderKickoff(parsed);
-    saveToCloud('kickoff_sheet', parsed);
+    lastKickoff = Object.assign({}, parsed, { _run: {
+      status: 'complete',
+      inputs_used: inputsUsed,
+      inputs_missing: inputsMissing,
+      incomplete_inputs: incompleteInputs,
+      completed_at: new Date().toISOString()
+    }});
+    renderKickoff(lastKickoff);
+    saveToCloud('kickoff_sheet', lastKickoff);
   }catch(e){
     if(e.name==='AbortError'){
       document.getElementById('kickoffMsg').innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
@@ -3844,6 +3893,7 @@ function renderKickoff(d){
   const bandColor = verdict==='DO NOT BID YET' ? '#B4451F' : verdict==='BID WITH CAUTION' ? '#B8860B' : '#2E7D57';
   const s = document.getElementById('kickoffSummary');
   s.innerHTML = `
+    ${kickoffRunStatusBannerHtml(d._run)}
     <div class="proj">
       <div class="pl">Project</div>
       <div class="pv">${esc(d.project||'Untitled project')}</div>
