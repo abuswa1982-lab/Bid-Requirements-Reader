@@ -2220,28 +2220,52 @@ function mergeCoverageResults(a, b){
   const rank = { 'Covered':2, 'Not Applicable':1, 'Missing':0 };
   const byKey = {};
   const order = [];
+  // Each findings group (main document, each addendum) is compared against the checklist
+  // independently, so the same checklist item can come back with a note from every single
+  // group. With a lot of addenda that used to mean concatenating a dozen-plus near-duplicate
+  // "not addressed in these findings" notes into one unreadable run-on paragraph per item. Two
+  // fixes: (1) once a higher status wins (e.g. a later group actually finds it Covered), drop
+  // the lower-status note entirely instead of appending it — "Covered... Also: not addressed" is
+  // contradictory noise, not signal. (2) cap how many same-status notes accumulate per item and
+  // just count the rest, so a genuinely repeated result reads as one clear line instead of a wall
+  // of restated sentences.
+  const MAX_NOTES_PER_ITEM = 3;
   function ingest(cov){
     (cov.coverage||[]).forEach(item=>{
       const key = normalizeItemKey(item.master_item);
       if(!key) return;
       if(!(key in byKey)){
-        byKey[key] = Object.assign({}, item);
+        byKey[key] = { master_item: item.master_item, status: item.status, _notes: item.note ? [item.note] : [], _extra: 0 };
         order.push(key);
       } else {
         const existing = byKey[key];
         const existingRank = rank[existing.status] ?? 0;
         const newRank = rank[item.status] ?? 0;
         if(newRank > existingRank){
-          byKey[key] = Object.assign({}, item, { note: (item.note||'') + (existing.note ? ' Also: '+existing.note : '') });
-        } else if(newRank === existingRank && item.note && item.note !== existing.note){
-          byKey[key] = Object.assign({}, existing, { note: (existing.note||'') + (existing.note && item.note ? ' ' : '') + item.note });
+          existing.status = item.status;
+          existing._notes = item.note ? [item.note] : [];
+          existing._extra = 0;
+        } else if(newRank === existingRank){
+          if(item.note && !existing._notes.includes(item.note)){
+            if(existing._notes.length < MAX_NOTES_PER_ITEM) existing._notes.push(item.note);
+            else existing._extra++;
+          }
         }
+        // newRank < existingRank: a worse status loses outright and contributes nothing.
       }
     });
   }
   ingest(a);
   ingest(b);
-  return { summary: [a.summary, b.summary].filter(Boolean).join(' '), coverage: order.map(k=>byKey[k]) };
+  return {
+    summary: [a.summary, b.summary].filter(Boolean).join(' '),
+    coverage: order.map(k=>{
+      const it = byKey[k];
+      let note = (it._notes||[]).join('  ·  ');
+      if(it._extra) note += (note ? '  ' : '') + '(+'+it._extra+' more findings groups, same result)';
+      return { master_item: it.master_item, status: it.status, note };
+    })
+  };
 }
 // Runs a checklist comparison as one or two smaller passes instead of always sending the main
 // document and every addendum together in one giant request. A large document plus one or more
