@@ -457,6 +457,11 @@
   </div>
   <div id="msg"></div>
   <div id="results">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Bid Requirements Results</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <div class="summary" id="summary"></div>
     <div class="scorebar" id="scorebar"></div>
     <div class="resbar" style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid var(--line)">
@@ -481,8 +486,14 @@
       <button class="btn2" onclick="runSecondCheck(this,true)" title="Ignores cache: re-reads the checklist PDF and recomputes every comparison from scratch. Use this after editing your checklist or findings, to be certain you're not seeing an old cached answer.">Force Fresh Run</button>
       <button class="stopbtn" id="secondCheckStop" onclick="stopSecondCheck()" type="button">Stop</button>
     </div>
+    </div>
     <div id="masterMsg"></div>
     <div id="masterCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+      <div class="collapsible-head open" onclick="toggleCollapse(this)">
+        <i class="chev" style="font-size:16px">&#9662;</i>
+      <h2>Checklist 1 Result</h2>
+      </div>
+      <div class="collapsible-body" style="display:block">
       <div class="summary" id="masterCheckSummary"></div>
       <div id="masterCheckGroups"></div>
       <div class="resbar">
@@ -491,9 +502,15 @@
         <button class="btn2 primary" onclick="downloadMasterCheckExcel(this)">Download Excel</button>
         <button class="btn2" onclick="copyMasterCheckText(this)">Copy gap report</button>
       </div>
+      </div>
     </div>
     <div id="secondMsg"></div>
     <div id="secondCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+      <div class="collapsible-head open" onclick="toggleCollapse(this)">
+        <i class="chev" style="font-size:16px">&#9662;</i>
+      <h2>Checklist 2 Result</h2>
+      </div>
+      <div class="collapsible-body" style="display:block">
       <div class="summary" id="secondCheckSummary"></div>
       <div id="secondCheckGroups"></div>
       <div class="resbar">
@@ -501,6 +518,7 @@
         <button class="btn2" onclick="downloadBackup('checklist_2', lastSecondCheck)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
         <button class="btn2 primary" onclick="downloadSecondCheckExcel(this)">Download Excel</button>
         <button class="btn2" onclick="copySecondCheckText(this)">Copy gap report</button>
+      </div>
       </div>
     </div>
   </div>
@@ -622,6 +640,11 @@
   </div>
   <div id="dwgMsg"></div>
   <div id="dwgResults" style="display:none">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Drawing Extraction Results</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <div class="summary" id="dwgSummary"></div>
     <div class="scorebar" id="dwgScorebar"></div>
     <div class="resbar" style="margin:0 0 22px;padding-bottom:18px;border-bottom:1px solid var(--line)">
@@ -642,9 +665,15 @@
       <button class="btn2" onclick="runThirdCheck(this,true)" title="Ignores cache: re-reads the checklist PDF and recomputes every comparison from scratch. Use this after editing your checklist or drawings, to be certain you're not seeing an old cached answer.">Force Fresh Run</button>
       <button class="stopbtn" id="thirdCheckStop" onclick="stopThirdCheck()" type="button">Stop</button>
     </div>
+    </div>
   </div>
   <div id="thirdMsg"></div>
   <div id="thirdCheckResults" style="display:none;margin-top:26px;border-top:3px solid var(--navy);padding-top:20px">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Checklist 3 Result</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <div class="summary" id="thirdCheckSummary"></div>
     <div id="thirdCheckGroups"></div>
     <div class="resbar">
@@ -652,6 +681,7 @@
       <button class="btn2" onclick="downloadBackup('checklist_3', lastThirdCheck)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadThirdCheckExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyThirdCheckText(this)">Copy gap report</button>
+    </div>
     </div>
   </div>
   </div><!-- /page-dwg -->
@@ -671,6 +701,11 @@
   </div>
   <div id="kickoffMsg"></div>
   <div id="kickoffResults" style="display:none">
+    <div class="collapsible-head open" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Kickoff Sheet Result</h2>
+    </div>
+    <div class="collapsible-body" style="display:block">
     <div class="summary" id="kickoffSummary"></div>
     <div class="scorebar" id="kickoffScorebar"></div>
     <div id="kickoffBody"></div>
@@ -679,6 +714,7 @@
       <button class="btn2" onclick="downloadBackup('kickoff_sheet', lastKickoff)" title="For pushing to the cloud later, from anywhere">Download Backup</button>
       <button class="btn2 primary" onclick="downloadKickoffExcel(this)">Download Excel</button>
       <button class="btn2" onclick="copyKickoffText(this)">Copy as text</button>
+    </div>
     </div>
   </div>
   </div><!-- /page-kickoff -->
@@ -1068,6 +1104,10 @@ async function loadCloudProject(btn){
     if(dwgAddendums.length) loaded.push(dwgAddendums.length+' drawing addendum'+(dwgAddendums.length===1?'':'s'));
     renderKickoffStatus();
     renderAskStatus();
+    // Loading a project can restore several results at once (spec extraction, both checklists,
+    // drawings, Checklist 3, kickoff) — start them all collapsed so the page reads as a compact
+    // list instead of dumping everything expanded down the screen. Each stays one click away.
+    ['results','masterCheckResults','secondCheckResults','dwgResults','thirdCheckResults','kickoffResults'].forEach(collapseResultSection);
     cloudStatus('Loaded from the cloud: ' + loaded.join(', ') + '.');
   }catch(e){
     console.error(e);
@@ -1916,6 +1956,41 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
     }
   ]
 }`;
+// Terse variant for Checklist 1 and 2, used where the person reading this wants a fast visual
+// scan, not an explained report: Covered gets one short confirmation line and nothing else,
+// Missing/Not Applicable get NO note at all (the status alone is the answer), and anything the
+// AI notices that ISN'T one of the checklist's own items goes into a separate "extra_findings"
+// list at the end instead of being mixed into the main coverage rows.
+const SYSTEM_MASTERCHECK_TERSE = `You are checking one specific bid's already-extracted findings against a company's Master Checklist, a standing reference of everything that could ever be required across any bid this company might pursue.
+You will be given two things:
+1. MASTER CHECKLIST: the full reference template, covering every category and form that could ever apply.
+2. BID FINDINGS: the structured checklist already produced by actually reading this specific bid's documents.
+Your job: for EVERY distinct requirement or category named in the Master Checklist, decide one of three things:
+- "Covered": this requirement is already addressed somewhere in the Bid Findings.
+- "Not Applicable": this clearly does not apply to this particular bid or project type.
+- "Missing": this Master Checklist item is not addressed anywhere in the Bid Findings, and cannot be confidently ruled out as inapplicable. This is a real gap a human needs to check by hand.
+RULES — this report gets scanned fast, not read line by line, so brevity is not optional:
+1. If status is "Covered": "note" states ONLY what was actually found, nothing else. Hard limit: 100 characters, no exceptions. No page number, no section reference, no reasoning. Example: "Project name and site address confirmed." or "Bid bond: 10% required."
+2. If status is "Missing" or "Not Applicable": set "note" to an empty string "". Do not explain why, do not give a reason. The status itself is the entire answer — a human decides what to do about it, they don't need your reasoning to do that.
+3. Base "Covered" only on what is actually present in the Bid Findings. Do not assume something is covered just because it seems typical or likely.
+4. When genuinely unsure, default to "Missing" over "Not Applicable". Missing is the safe failure mode.
+5. Do not invent Master Checklist items that were not actually in the text provided.
+6. Some Bid Findings items are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum, not the original bid documents. An addendum ALWAYS supersedes the original on the exact same spec section or topic — use only the addendum's version when deciding status, and ignore the superseded original entirely, even if it appears elsewhere in the findings.
+Separately, also produce "extra_findings": things you noticed in the Bid Findings that are genuinely important but are NOT one of the Master Checklist items above — something the checklist didn't think to ask about, but a human reviewer would want flagged. Do not use this as a place to restate ordinary scope items or repeat anything already covered above; only include something here if a human would actually want a second look at it. For each one:
+- "item": short description of what was found, one short phrase.
+- "reference": the exact page number or section from that finding's own "source" field, so a human can go look at the original document. If no clear reference exists, use an empty string.
+- "why": one short sentence, under 150 characters, on why it's worth flagging.
+If there's nothing that belongs there, return an empty list, do not force something in just to have an entry.
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "summary": "one or two plain sentences on how complete these bid findings are against the master list",
+  "coverage": [
+    { "master_item": "short name of the master-checklist requirement or category", "status": "Covered | Not Applicable | Missing", "note": "see rules above" }
+  ],
+  "extra_findings": [
+    { "item": "short description of what was found", "reference": "page number or section, or empty string", "why": "one short sentence on why it matters" }
+  ]
+}`;
 const SYSTEM_CHECKLIST_EXTRACT = `You are converting a reference checklist document into a compact, structured list of its individual requirements or line items, so this checklist can be compared against many different bids' findings later without re-reading the original document every single time.
 Read the entire attached checklist. Extract every distinct requirement, category, or line item a bid could ever be checked against — the same granularity a human reviewer would actually check off one at a time. Do not summarize, merge similar items together, or condense sections into one line; keep them separate exactly as a person ticking down the list would see them.
 RULES:
@@ -2263,6 +2338,23 @@ function kickoffRunStatusBannerHtml(run){
   }
   return html;
 }
+// Shared rendering helpers for "extra_findings" — the Checklist 1/2 terse-format section for
+// things the AI noticed that weren't one of the checklist's own line items (see
+// SYSTEM_MASTERCHECK_TERSE). Reused across the on-screen view, copy-to-clipboard, Excel, and PDF
+// exports so all four stay in sync automatically as this evolves, instead of drifting apart.
+function extraFindingsSectionHtml(list){
+  if(!list || !list.length) return '';
+  const rows = list.map(f=>'<div class="item"><div class="body"><div class="req">'+esc(f.item||'')
+    +(f.reference?' <span style="color:var(--muted);font-weight:400">— '+esc(f.reference)+'</span>':'')
+    +'</div><div class="det">'+esc(f.why||'')+'</div></div></div>').join('');
+  return '<div class="grp"><div class="grp-h"><span class="t">Additional Findings (not on the checklist)</span><span class="c">'+list.length+'</span></div>'+rows+'</div>';
+}
+function extraFindingsTextBlock(list){
+  if(!list || !list.length) return '';
+  let out = 'ADDITIONAL FINDINGS (not on the checklist)\n';
+  list.forEach(f=>{ out += '  - '+(f.item||'')+(f.reference?' ['+f.reference+']':'')+(f.why?': '+f.why:'')+'\n'; });
+  return out + '\n';
+}
 function mergeCoverageResults(a, b){
   const rank = { 'Covered':2, 'Not Applicable':1, 'Missing':0 };
   const byKey = {};
@@ -2304,6 +2396,26 @@ function mergeCoverageResults(a, b){
   }
   ingest(a);
   ingest(b);
+  // extra_findings (Checklist 1/2's terse format only — see SYSTEM_MASTERCHECK_TERSE) is a flat
+  // list, not a per-item slot, so merging it just means combining both passes' lists and dropping
+  // exact duplicates by item+reference, capped so a large addenda set can't grow this unbounded.
+  const MAX_EXTRA_FINDINGS = 60;
+  const extraByKey = {};
+  const extraOrder = [];
+  let extraDropped = 0;
+  function ingestExtra(list){
+    (list||[]).forEach(f=>{
+      const key = normalizeItemKey(f.item)+'::'+normalizeItemKey(f.reference);
+      if(key==='::' || (key in extraByKey)) return;
+      if(extraOrder.length >= MAX_EXTRA_FINDINGS){ extraDropped++; return; }
+      extraByKey[key] = { item: f.item, reference: f.reference||'', why: f.why||'' };
+      extraOrder.push(key);
+    });
+  }
+  ingestExtra(a.extra_findings);
+  ingestExtra(b.extra_findings);
+  const extra_findings = extraOrder.map(k=>extraByKey[k]);
+  if(extraDropped) extra_findings.push({ item: '(+'+extraDropped+' more extra findings not shown)', reference:'', why:'' });
   return {
     summary: [a.summary, b.summary].filter(Boolean).join(' '),
     coverage: order.map(k=>{
@@ -2311,7 +2423,8 @@ function mergeCoverageResults(a, b){
       let note = (it._notes||[]).join('  ·  ');
       if(it._extra) note += (note ? '  ' : '') + '(+'+it._extra+' more findings groups, same result)';
       return { master_item: it.master_item, status: it.status, note };
-    })
+    }),
+    extra_findings: extra_findings
   };
 }
 // Runs a checklist comparison as one or two smaller passes instead of always sending the main
@@ -2412,6 +2525,10 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
   // as plain text on every pass — this is what replaces resending the original PDF every time.
   const checklistBlock = {type:"text", text:"MASTER CHECKLIST (already extracted into structured items):\n\n"+JSON.stringify(structuredChecklist, null, 2), cache_control:{type:"ephemeral"}};
   const checklistFingerprint = fnv1aString(JSON.stringify(structuredChecklist));
+  // Folding a fingerprint of the system prompt itself into the cache key means a future prompt
+  // change (like this one, switching Checklist 1/2 to a terser format) automatically invalidates
+  // old cached answers instead of silently mixing old-format and new-format results together.
+  const promptFingerprint = fnv1aString(systemPrompt);
   async function onePass(items, label){
     const findingsSummary = { project, bid_due: bidDue, items: items.map(i => ({ category:i.category, topic:i.topic, requirement:i.requirement, detail:i.detail, source:i.source })) };
     const content = [
@@ -2460,7 +2577,7 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
     // counts — two runs with the same number of items but different content (a corrected
     // finding, an edited checklist) now get their own cache entries instead of one silently
     // reusing the other's stale answer.
-    const cacheKey = cacheProjectKey+'::'+checklistType+'::checklist-'+checklistFingerprint+'::'+groups[g].label+'::'+fnv1aString(JSON.stringify(groups[g].items));
+    const cacheKey = cacheProjectKey+'::'+checklistType+'::prompt-'+promptFingerprint+'::checklist-'+checklistFingerprint+'::'+groups[g].label+'::'+fnv1aString(JSON.stringify(groups[g].items));
     let result;
     try{
       if(!forceFresh && checklistPassCache[cacheKey]){
@@ -3080,6 +3197,21 @@ function toggleCollapse(headEl){
   headEl.classList.toggle('open', !isOpen);
   body.style.display = isOpen ? 'none' : 'block';
 }
+// Collapses a result panel's own collapsible-head (its FIRST one — each of these containers has
+// exactly one at the top of its own subtree, independent of any nested result panels inside it).
+// Used right after loading a project from the cloud: restoring five or six results at once used
+// to dump every one of them fully expanded down the page. Now they land collapsed, so loading a
+// project gives a compact, scannable list instead of a wall of scrolling — click whichever one
+// you actually want to look at.
+function collapseResultSection(containerId){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const head = container.querySelector('.collapsible-head');
+  if(!head) return;
+  head.classList.remove('open');
+  const body = head.nextElementSibling;
+  if(body) body.style.display = 'none';
+}
 function downloadExcel(btn){
   if(!lastData) return;
   if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
@@ -3246,7 +3378,7 @@ async function runMasterCheck(btn, forceFresh){
     btn.textContent = 'Reading checklist 1…';
     const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? masterFile.buf : null, usingPdf ? null : masterText, masterCheckAbort.signal, 'masterMsg', forceFresh);
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against master list…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg', undefined, forceFresh);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_1', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK_TERSE, masterCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against master list…'; }, 'masterMsg', undefined, forceFresh);
     lastMasterCheck = parsed;
     renderMasterCheck(parsed);
     saveToCloud('checklist_1', parsed);
@@ -3301,6 +3433,7 @@ function renderMasterCheck(d){
     });
     groups.appendChild(sec);
   });
+  groups.insertAdjacentHTML('beforeend', extraFindingsSectionHtml(d.extra_findings));
   document.getElementById('masterCheckResults').style.display = 'block';
   document.getElementById('masterCheckResults').scrollIntoView({behavior:'smooth', block:'start'});
 }
@@ -3316,6 +3449,7 @@ function copyMasterCheckText(btn){
       list.forEach(i=>{ out += '  - '+(i.master_item||'')+(i.note?': '+i.note:'')+'\n'; });
       out += '\n';
     });
+    out += extraFindingsTextBlock(d.extra_findings);
     navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showErr("Copy failed: "+e.message));
   }catch(e){
     console.error(e);
@@ -3342,6 +3476,12 @@ function downloadMasterCheckExcel(btn){
         rows.push([label, i.master_item||'', i.note||'']);
       });
     });
+    if((d.extra_findings||[]).length){
+      rows.push([]);
+      rows.push(['Additional Findings (not on the checklist)']);
+      rows.push(['Item','Reference','Why it matters']);
+      d.extra_findings.forEach(f=>{ rows.push([f.item||'', f.reference||'', f.why||'']); });
+    }
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
     const wb = XLSX.utils.book_new();
@@ -3391,6 +3531,21 @@ function downloadMasterCheckPDF(btn){
       },
       margin:{left:M,right:M}
     });
+    if((d.extra_findings||[]).length){
+      let ey = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+      doc.text('Additional Findings (not on the checklist)', M, ey); ey += 8;
+      doc.autoTable({
+        startY: ey,
+        head: [['Item','Reference','Why it matters']],
+        body: d.extra_findings.map(f=>[f.item||'', f.reference||'', f.why||'']),
+        styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+        alternateRowStyles:{ fillColor:[247,249,251] },
+        columnStyles:{ 0:{cellWidth:150}, 1:{cellWidth:80}, 2:{cellWidth:'auto'} },
+        margin:{left:M,right:M}
+      });
+    }
     doc.save(masterCheckFname('pdf'));
     flash(btn);
   }catch(e){
@@ -3433,7 +3588,7 @@ async function runSecondCheck(btn, forceFresh){
     btn.textContent = 'Reading checklist 2…';
     const structuredChecklist = await getStructuredChecklist(key, usingPdf, usingPdf ? secondFile.buf : null, usingPdf ? null : secondText, secondCheckAbort.signal, 'secondMsg', forceFresh);
     btn.textContent = addendums.length ? 'Checking main document…' : 'Checking against checklist 2…';
-    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg', undefined, forceFresh);
+    const parsed = await runChecklistCompareMultiPass(key, 'checklist_2', structuredChecklist, lastData.items||[], addendums, lastData.project, lastData.bid_due, SYSTEM_MASTERCHECK_TERSE, secondCheckAbort.signal, (i,n,label)=>{ btn.textContent = n>1 ? ('Checking part '+i+' of '+n+(label?(' ('+label+')'):'')+'…') : 'Checking against checklist 2…'; }, 'secondMsg', undefined, forceFresh);
     lastSecondCheck = parsed;
     renderSecondCheck(parsed);
     saveToCloud('checklist_2', parsed);
@@ -3488,6 +3643,7 @@ function renderSecondCheck(d){
     });
     groups.appendChild(sec);
   });
+  groups.insertAdjacentHTML('beforeend', extraFindingsSectionHtml(d.extra_findings));
   document.getElementById('secondCheckResults').style.display = 'block';
   document.getElementById('secondCheckResults').scrollIntoView({behavior:'smooth', block:'start'});
 }
@@ -3503,6 +3659,7 @@ function copySecondCheckText(btn){
       list.forEach(i=>{ out += '  - '+(i.master_item||'')+(i.note?': '+i.note:'')+'\n'; });
       out += '\n';
     });
+    out += extraFindingsTextBlock(d.extra_findings);
     navigator.clipboard.writeText(out).then(()=>flash(btn)).catch(e=>showErr("Copy failed: "+e.message));
   }catch(e){
     console.error(e);
@@ -3529,6 +3686,12 @@ function downloadSecondCheckExcel(btn){
         rows.push([label, i.master_item||'', i.note||'']);
       });
     });
+    if((d.extra_findings||[]).length){
+      rows.push([]);
+      rows.push(['Additional Findings (not on the checklist)']);
+      rows.push(['Item','Reference','Why it matters']);
+      d.extra_findings.forEach(f=>{ rows.push([f.item||'', f.reference||'', f.why||'']); });
+    }
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:16},{wch:34},{wch:70}];
     const wb = XLSX.utils.book_new();
@@ -3578,6 +3741,21 @@ function downloadSecondCheckPDF(btn){
       },
       margin:{left:M,right:M}
     });
+    if((d.extra_findings||[]).length){
+      let ey = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+      doc.text('Additional Findings (not on the checklist)', M, ey); ey += 8;
+      doc.autoTable({
+        startY: ey,
+        head: [['Item','Reference','Why it matters']],
+        body: d.extra_findings.map(f=>[f.item||'', f.reference||'', f.why||'']),
+        styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+        alternateRowStyles:{ fillColor:[247,249,251] },
+        columnStyles:{ 0:{cellWidth:150}, 1:{cellWidth:80}, 2:{cellWidth:'auto'} },
+        margin:{left:M,right:M}
+      });
+    }
     doc.save(secondCheckFname('pdf'));
     flash(btn);
   }catch(e){
