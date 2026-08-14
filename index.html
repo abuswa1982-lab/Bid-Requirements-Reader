@@ -67,12 +67,12 @@
     text-transform:uppercase;color:var(--muted);margin:0 0 14px;
   }
   label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 6px;letter-spacing:.01em}
-  input[type=text],input[type=password],textarea{
+  input[type=text],input[type=password],textarea,select{
     width:100%;font-family:var(--body);font-size:14px;color:var(--ink);
     background:var(--paper);border:1px solid var(--line-strong);border-radius:4px;
     padding:10px 11px;
   }
-  input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:var(--blue)}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px;border-color:var(--blue)}
   textarea{min-height:150px;resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.55}
   .hint{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.45}
   .keyrow{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
@@ -720,8 +720,136 @@
   </div><!-- /page-kickoff -->
   <div id="page-ask" style="display:none">
   <div class="card">
+    <h2>Ask the Checklist</h2>
+    <p class="hint" style="margin:0 0 10px">Pre-answers every question on Checklist 1, 2, or 3 in one batch scan, so afterward you can browse real, short answers instantly — no repeated AI calls, no re-reading anything. This is completely independent of the Checklist 1/2/3 tabs above: it does not read their state and cannot be affected by anything that happens there. Attach the checklist file below (even if you already attached the same one up top — this is its own separate read) and click "Scan for Q&amp;A" once. To add a new question later, edit your checklist document itself and scan again — nothing to configure here.</p>
+  </div>
+  <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Checklist 1 — Attach &amp; Scan</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
+    <div class="toggle">
+      <button id="askScan1-tab-pdf" class="on" onclick="setAskScanMode(1,'pdf')" type="button">Upload PDF</button>
+      <button id="askScan1-tab-text" onclick="setAskScanMode(1,'text')" type="button">Paste text</button>
+    </div>
+    <div id="askScan1-mode-pdf">
+      <div class="drop" id="askScan1Drop">
+        <div class="big">Drop the Checklist 1 PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="askScan1File" accept="application/pdf" style="display:none">
+      <div class="filelist" id="askScan1Filelist"></div>
+    </div>
+    <div id="askScan1-mode-text" style="display:none">
+      <textarea id="askScan1Text" placeholder="Paste Checklist 1 reference text here." style="min-height:110px"></textarea>
+    </div>
+    <div class="runbar" style="margin-top:14px">
+      <button class="run" id="askScan1Btn" onclick="runAskScan(1,this)">
+        <span class="spin" id="askScan1Spin"></span><span id="askScan1Label">Scan Checklist 1 for Q&amp;A</span>
+      </button>
+      <button class="btn2" onclick="runAskScan(1,this,true)" title="Ignores cache: re-reads the checklist PDF and re-answers every question from scratch. Use this after editing your checklist, to add new questions or update existing ones.">Force Fresh Run</button>
+      <button class="stopbtn" id="askScan1Stop" onclick="stopAskScan(1)" type="button">Stop</button>
+    </div>
+    <div id="askScan1Msg" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Checklist 2 — Attach &amp; Scan</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
+    <div class="toggle">
+      <button id="askScan2-tab-pdf" class="on" onclick="setAskScanMode(2,'pdf')" type="button">Upload PDF</button>
+      <button id="askScan2-tab-text" onclick="setAskScanMode(2,'text')" type="button">Paste text</button>
+    </div>
+    <div id="askScan2-mode-pdf">
+      <div class="drop" id="askScan2Drop">
+        <div class="big">Drop the Checklist 2 PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="askScan2File" accept="application/pdf" style="display:none">
+      <div class="filelist" id="askScan2Filelist"></div>
+    </div>
+    <div id="askScan2-mode-text" style="display:none">
+      <textarea id="askScan2Text" placeholder="Paste Checklist 2 reference text here." style="min-height:110px"></textarea>
+    </div>
+    <div class="runbar" style="margin-top:14px">
+      <button class="run" id="askScan2Btn" onclick="runAskScan(2,this)">
+        <span class="spin" id="askScan2Spin"></span><span id="askScan2Label">Scan Checklist 2 for Q&amp;A</span>
+      </button>
+      <button class="btn2" onclick="runAskScan(2,this,true)" title="Ignores cache: re-reads the checklist PDF and re-answers every question from scratch. Use this after editing your checklist, to add new questions or update existing ones.">Force Fresh Run</button>
+      <button class="stopbtn" id="askScan2Stop" onclick="stopAskScan(2)" type="button">Stop</button>
+    </div>
+    <div id="askScan2Msg" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Checklist 3 — Attach &amp; Scan</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
+    <div class="toggle">
+      <button id="askScan3-tab-pdf" class="on" onclick="setAskScanMode(3,'pdf')" type="button">Upload PDF</button>
+      <button id="askScan3-tab-text" onclick="setAskScanMode(3,'text')" type="button">Paste text</button>
+    </div>
+    <div id="askScan3-mode-pdf">
+      <div class="drop" id="askScan3Drop">
+        <div class="big">Drop the Checklist 3 PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="askScan3File" accept="application/pdf" style="display:none">
+      <div class="filelist" id="askScan3Filelist"></div>
+    </div>
+    <div id="askScan3-mode-text" style="display:none">
+      <textarea id="askScan3Text" placeholder="Paste Checklist 3 reference text here." style="min-height:110px"></textarea>
+    </div>
+    <div class="runbar" style="margin-top:14px">
+      <button class="run" id="askScan3Btn" onclick="runAskScan(3,this)">
+        <span class="spin" id="askScan3Spin"></span><span id="askScan3Label">Scan Checklist 3 for Q&amp;A</span>
+      </button>
+      <button class="btn2" onclick="runAskScan(3,this,true)" title="Ignores cache: re-reads the checklist PDF and re-answers every question from scratch. Use this after editing your checklist, to add new questions or update existing ones.">Force Fresh Run</button>
+      <button class="stopbtn" id="askScan3Stop" onclick="stopAskScan(3)" type="button">Stop</button>
+    </div>
+    <div id="askScan3Msg" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Browse Answers</h2>
+    <p class="hint" style="margin:0 0 14px">Reads only what's already been scanned and saved above — picking a question here never calls the AI and never costs anything.</p>
+    <div id="askBrowseEmpty" class="hint">Nothing scanned yet. Scan a checklist above first.</div>
+    <div id="askBrowseWrap" style="display:none">
+      <div id="askBrowseChecklistBanner"></div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+        <div style="flex:1;min-width:180px">
+          <label class="fld" for="askBrowseChecklist">Checklist</label>
+          <select id="askBrowseChecklist" onchange="onAskBrowseChecklistChange()"></select>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="fld" for="askBrowseSection">Section</label>
+          <select id="askBrowseSection" onchange="onAskBrowseSectionChange()"></select>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="fld" for="askBrowseQuestion">Question</label>
+          <select id="askBrowseQuestion" onchange="renderAskBrowseAnswer()"></select>
+        </div>
+      </div>
+      <div id="askBrowseAnswerWrap" class="grp" style="display:none">
+        <div class="grp-h"><span class="t">Answer</span></div>
+        <div class="item"><div class="body">
+          <div class="req" id="askBrowseQuestionText" style="font-weight:600"></div>
+          <div class="det" id="askBrowseAnswerText" style="font-size:14px;line-height:1.6;margin-top:6px"></div>
+          <div class="meta" id="askBrowseHumanNote" style="display:none;margin-top:8px"></div>
+        </div></div>
+      </div>
+      <div id="askBrowseExtra" style="margin-top:18px"></div>
+    </div>
+  </div>
+  <div class="card">
     <h2>Ask about this project</h2>
-    <p class="hint" style="margin:0 0 10px">This searches only what's already been read for this project in Phase 1 — the spec extraction, both checklists, drawings, Checklist 3, and the kickoff sheet, whichever of those are currently loaded above. It won't go re-read any documents, and it won't answer from anything outside what's already here. This is a scoped preview of what full Q&amp;A (Phase 5) will eventually do across every phase.</p>
+    <p class="hint" style="margin:0 0 10px">For anything NOT already on Checklist 1, 2, or 3 above — a one-off question, answered live from whatever's currently loaded (spec extraction, checklist coverage, drawings, kickoff sheet). Unlike Browse Answers above, this always makes a fresh AI call. It won't go re-read any documents, and it won't answer from anything outside what's already here.</p>
     <div id="askStatus" style="display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px"></div>
   </div>
   <div class="card">
@@ -808,6 +936,16 @@ let secondCheckAbort = null;
 let thirdCheckAbort = null;
 let kickoffAbort = null;
 let askAbort = null;
+// Ask the Checklist (batch scan-and-save Q&A): completely independent state from Checklist
+// 1/2/3 above — its own upload slots, its own abort controllers, its own saved results. Nothing
+// here reads from or writes to masterFile/secondFile/thirdFile or lastMasterCheck/lastSecondCheck/
+// lastThirdCheck, on purpose, so building or changing this can never affect those tabs.
+let askScanMode = {1:'pdf', 2:'pdf', 3:'pdf'};
+let askScanFile = {1:null, 2:null, 3:null}; // {name, size, buf}
+let askScanAbort = {1:null, 2:null, 3:null};
+let lastAskScan1 = null, lastAskScan2 = null, lastAskScan3 = null;
+function lastAskScanFor(n){ return n===1?lastAskScan1:n===2?lastAskScan2:lastAskScan3; }
+function setLastAskScanFor(n, v){ if(n===1) lastAskScan1=v; else if(n===2) lastAskScan2=v; else lastAskScan3=v; }
 let addendAbort = null;
 let addendums = []; // [{name, data}]
 let addendFiles = []; // [{name, size, buf}]
@@ -1088,6 +1226,18 @@ async function loadCloudProject(btn){
       renderKickoff(lastKickoff);
       loaded.push('Kickoff Sheet');
     }
+    const askScanLoadedLabels = [];
+    [1,2,3].forEach(n=>{
+      const row = latestByPhase['ask_scan_'+n];
+      if(row){
+        setLastAskScanFor(n, JSON.parse(row.data));
+        askScanLoadedLabels.push('Checklist '+n+' Q&A');
+      }
+    });
+    if(askScanLoadedLabels.length){
+      refreshAskBrowseOptions();
+      loaded.push(askScanLoadedLabels.join(', '));
+    }
     addendums = [];
     Object.keys(latestByPhase).filter(k=>k.indexOf('addendum:')===0).forEach(k=>{
       const parsed = JSON.parse(latestByPhase[k].data);
@@ -1208,7 +1358,7 @@ function setPageTab(p){
   document.getElementById('ptab-ask').classList.toggle('on', p==='ask');
   document.getElementById('ptab-pick').classList.toggle('on', p==='pick');
   if(p==='kickoff') renderKickoffStatus();
-  if(p==='ask') renderAskStatus();
+  if(p==='ask'){ renderAskStatus(); refreshAskBrowseOptions(); }
 }
 function setMode(m){
   mode = m;
@@ -1541,6 +1691,52 @@ function renderThirdFile(){
   d.querySelector('.x').onclick = ()=>{thirdFile=null;renderThirdFile()};
   el.appendChild(d);
 }
+// Ask the Checklist upload wiring — one generic set of handlers parameterized by checklist
+// number (1/2/3) instead of tripling this block, since all three slots behave identically.
+// Independent of masterFile/secondFile/thirdFile above: these write only into askScanMode/
+// askScanFile, keyed by n.
+function setAskScanMode(n, m){
+  askScanMode[n] = m;
+  document.getElementById('askScan'+n+'-mode-pdf').style.display = m==='pdf'?'block':'none';
+  document.getElementById('askScan'+n+'-mode-text').style.display = m==='text'?'block':'none';
+  document.getElementById('askScan'+n+'-tab-pdf').classList.toggle('on', m==='pdf');
+  document.getElementById('askScan'+n+'-tab-text').classList.toggle('on', m==='text');
+}
+function renderAskScanFile(n){
+  const el = document.getElementById('askScan'+n+'Filelist');
+  el.innerHTML = '';
+  const f = askScanFile[n];
+  if(!f) return;
+  const kb = f.size>1048576 ? (f.size/1048576).toFixed(1)+' MB' : Math.round(f.size/1024)+' KB';
+  const d = document.createElement('div');
+  d.className='filepill';
+  d.innerHTML = `<span class="nm"></span><span class="sz">${kb}</span><span class="x" title="remove">✕</span>`;
+  d.querySelector('.nm').textContent = f.name;
+  d.querySelector('.x').onclick = ()=>{askScanFile[n]=null;renderAskScanFile(n)};
+  el.appendChild(d);
+}
+function addAskScanFile(n, list){
+  const f = [...list].find(isPdfFile);
+  if(!f){
+    if(list.length) document.getElementById('askScan'+n+'Msg').innerHTML = `<div class="note err"><b>Hold on.</b> That doesn't look like a PDF. Only .pdf files can be attached here.</div>`;
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    askScanFile[n] = {name:f.name, size:f.size, buf: reader.result};
+    renderAskScanFile(n);
+  };
+  reader.readAsArrayBuffer(f);
+}
+[1,2,3].forEach(n=>{
+  const drop = document.getElementById('askScan'+n+'Drop');
+  const fileInput = document.getElementById('askScan'+n+'File');
+  drop.addEventListener('click', ()=>fileInput.click());
+  drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over')});
+  drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
+  drop.addEventListener('drop', e=>{e.preventDefault();drop.classList.remove('over');addAskScanFile(n, e.dataTransfer.files)});
+  fileInput.addEventListener('change', e=>{addAskScanFile(n, e.target.files); e.target.value='';});
+});
 const drawingsDrop = document.getElementById('dwgDrop');
 const drawingsFileInput = document.getElementById('dwgFile');
 drawingsDrop.addEventListener('click', ()=>drawingsFileInput.click());
@@ -2130,6 +2326,42 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
   "answer": "the direct answer in plain language, or an explanation of what's missing if not found",
   "source": "which part(s) of the provided data this came from, or empty string if not found"
 }`;
+// Ask the Checklist: extraction step. Deliberately separate from SYSTEM_CHECKLIST_EXTRACT (used
+// by Checklist 1/2/3) even though the source documents can be the same file — that extraction
+// returns a flat list with a bare "ref" string, which isn't enough to build a clean two-level
+// Section > Question browser. This one explicitly groups items under their own section, by name.
+const SYSTEM_ASK_EXTRACT = `You are converting a reference checklist document into a structured outline of SECTIONS, each containing the individual QUESTIONS or line items a person would go through one at a time — the same grouping a human would see flipping through the actual document.
+RULES:
+1. Extract only what is actually in the document. Do not invent, infer, or add sections or items that are not there.
+2. Group items under the section they actually appear under in the document (its own heading, numbered section, or category). If the document has section numbers, put that number in the section's "id". If it has no real sections at all, put everything under one section with "id":"1" and "title":"General".
+3. Skip purely administrative/meta sections that aren't actually requirements to check (for example a section that only describes output formatting or how the checklist itself should be filled out) — only include sections that contain real requirements, questions, or line items.
+4. Phrase each "question" as a short, direct question or checkable statement a person could answer in a sentence or two — plain language, not a paraphrase of the whole section. Keep the checklist's own item numbering in "ref" if present, else leave it empty.
+5. Assign each question a short stable "id", unique across the ENTIRE document (not just within its section) — e.g. "1.1", "1.2", "2.1".
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "sections": [
+    { "id": "string", "title": "short section name as titled in the document",
+      "questions": [ { "id": "string, unique across the whole document", "question": "short direct question", "ref": "item number from the document if present, else empty string" } ]
+    }
+  ]
+}`;
+// Ask the Checklist: answering step. Runs once per batch of questions (not per-document-chunk
+// like checklist comparison — the questions are what's chunked here, the bid documents are sent
+// once per batch as the fixed context). Independent system prompt from everything else in the
+// app; only reads whatever bid-side data is already loaded (same payload shape as SYSTEM_ASK).
+const SYSTEM_ASK_ANSWER = `You are answering a fixed list of checklist questions about one specific construction bid, using ONLY the project data provided — nothing assumed, nothing guessed, nothing from outside it.
+For EVERY question in QUESTIONS, provide exactly one answer:
+1. "answer": a real, specific, short answer drawn from the provided data. Hard limit: 300 characters, no exceptions — this is a quick-reference lookup, not a report. If the data genuinely doesn't say, answer plainly that it isn't stated in what's loaded, still under 300 characters.
+2. "needs_human": true ONLY for a question that isn't something the provided documents could ever answer even in principle — it requires a person to verify something outside the documents (an external license lookup, a subjective judgment call, physically confirming something on site, checking a system this app has no access to). Do NOT set this just because the answer happens to be missing from what's currently loaded — that's still a normal (if blank) AI answer, not a human-only question.
+3. "human_reason": if needs_human is true, one short phrase (under 150 characters) on what a human specifically needs to go check. Empty string otherwise.
+4. Some items are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum, which ALWAYS supersedes the original on the exact same spec section or topic — answer using only the addendum's version when both exist.
+5. Every question id in your response must exactly match an id from QUESTIONS. Answer every single one, do not skip any, do not answer the same id twice.
+Separately, also produce "extra_findings": important things you noticed in the provided data that are genuinely worth flagging but are NOT an answer to any of the QUESTIONS above and would otherwise get missed. Do not restate ordinary scope already captured by an answer. For each: "item" (short description), "reference" (page/section from the source data, or empty string), "why" (one short sentence, under 150 characters). Return an empty list if there's nothing that belongs there.
+Return ONLY valid JSON, no prose, no markdown fences. Schema:
+{
+  "answers": [ { "id": "string, matches a QUESTIONS id", "answer": "string, max 300 characters", "needs_human": true or false, "human_reason": "string, max 150 characters, empty if needs_human is false" } ],
+  "extra_findings": [ { "item": "string", "reference": "string", "why": "string, max 150 characters" } ]
+}`;
 // Browsers do not time out a hanging fetch() on their own — if a request stalls
 // (connects but never actually gets a response, no explicit error), the browser will
 // wait forever with zero feedback. This turns that into a real, visible failure after
@@ -2355,6 +2587,21 @@ function extraFindingsTextBlock(list){
   list.forEach(f=>{ out += '  - '+(f.item||'')+(f.reference?' ['+f.reference+']':'')+(f.why?': '+f.why:'')+'\n'; });
   return out + '\n';
 }
+// Same audit-trail idea as runStatusBannerHtml/kickoffRunStatusBannerHtml, worded for Ask the
+// Checklist's own shape: a scan answers a fixed list of questions once, it doesn't compare
+// findings against a checklist, so "complete" here means every question got an answer.
+function askScanBannerHtml(run){
+  if(!run) return '';
+  if(run.status === 'complete'){
+    return '<div class="note" style="background:#E9F5EC;border:1px solid #A8D5B5;color:#1E5631;margin-bottom:14px">'
+      + '<b>SCAN COMPLETE.</b> '+run.questions_total+' question'+(run.questions_total===1?'':'s')+' across '+run.sections_total+' section'+(run.sections_total===1?'':'s')+' answered, '
+      + run.completed_chunks+' of '+run.total_chunks+' batch'+(run.total_chunks===1?'':'es')+' completed'
+      + (run.needs_human_count ? ', '+run.needs_human_count+' flagged for human review' : '') + '. Built from: '+esc(run.inputs_used.length ? run.inputs_used.join(', ') : 'nothing loaded')+'.</div>';
+  }
+  return '<div class="note err" style="margin-bottom:14px">'
+    + '<b>SCAN INCOMPLETE — DO NOT RELY ON THIS RESULT.</b> Only '+run.completed_chunks+' of '+run.total_chunks+' batches finished before it stopped. '
+    + 'Click "Scan for Q&amp;A" again to pick up where it left off — batches already done are cached and won\'t be re-run or re-charged.</div>';
+}
 function mergeCoverageResults(a, b){
   const rank = { 'Covered':2, 'Not Applicable':1, 'Missing':0 };
   const byKey = {};
@@ -2519,6 +2766,48 @@ async function getStructuredChecklist(key, usingPdf, fileBuf, pastedText, signal
   saveChecklistStructCache();
   return items;
 }
+// Ask the Checklist's own structure cache — deliberately a separate localStorage key and a
+// separate in-memory object from checklistStructCache above, even though both are keyed the
+// same way (a fingerprint of the file's actual bytes/text). Checklist 1/2/3's cache holds a flat
+// {id,item,ref} list; this one holds the section/question outline SYSTEM_ASK_EXTRACT produces.
+// Keeping them apart means nothing about building or changing Ask the Checklist can ever read,
+// overwrite, or invalidate what Checklist 1/2/3 already has cached, or vice versa.
+const ASK_STRUCT_CACHE_KEY = 'modonix_ask_struct_cache';
+let askStructCache = {};
+(function initAskStructCache(){
+  try{
+    const saved = localStorage.getItem(ASK_STRUCT_CACHE_KEY);
+    if(saved) askStructCache = JSON.parse(saved) || {};
+  }catch(e){ askStructCache = {}; }
+})();
+function saveAskStructCache(){
+  try{ localStorage.setItem(ASK_STRUCT_CACHE_KEY, JSON.stringify(askStructCache)); }
+  catch(e){ /* ignore */ }
+}
+async function getAskStructure(key, usingPdf, fileBuf, pastedText, signal, hintElId, forceFresh){
+  const sourceSig = usingPdf
+    ? 'pdf:'+fileBuf.byteLength+':'+fnv1aBytes(new Uint8Array(fileBuf))
+    : 'text:'+fnv1aString(pastedText);
+  if(!forceFresh && askStructCache[sourceSig]) return askStructCache[sourceSig];
+  const content = usingPdf
+    ? [ {type:"document", source:{type:"base64", media_type:"application/pdf", data: arrayBufferToBase64(new Uint8Array(fileBuf))}},
+        {type:"text", text:"Extract this checklist's sections and questions as instructed. Return the JSON schema only."} ]
+    : [ {type:"text", text:"CHECKLIST TEXT:\n\n"+pastedText},
+        {type:"text", text:"Extract this checklist's sections and questions as instructed. Return the JSON schema only."} ];
+  const parsed = await fetchAndParseJSON(key, content, SYSTEM_ASK_EXTRACT, signal, hintElId, "checklist Q&A structure extraction");
+  const sections = parsed.sections||[];
+  askStructCache[sourceSig] = sections;
+  saveAskStructCache();
+  return sections;
+}
+// Defensive safety net for the 300-character answer cap SYSTEM_ASK_ANSWER is instructed to
+// follow — a prompt instruction alone can occasionally slip on an unusual response, and this
+// is cheap insurance against ever displaying, saving, or exporting something over the limit.
+function capAnswer(s, max){
+  s = String(s||'');
+  max = max || 300;
+  return s.length > max ? s.slice(0, max-1)+'…' : s;
+}
 async function runChecklistCompareMultiPass(key, checklistType, structuredChecklist, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId, itemsPerPass, forceFresh){
   itemsPerPass = itemsPerPass || ITEMS_PER_CHECKLIST_PASS;
   // The structured checklist is small (a JSON list of {id, item, ref}), so it's cheap to send
@@ -2605,6 +2894,121 @@ async function runChecklistCompareMultiPass(key, checklistType, structuredCheckl
   // (the render functions, Kickoff Sheet, a human checking it later) can check _run.status
   // instead of having to trust that "no error" meant "ran to completion."
   return Object.assign({}, merged, { _run: buildRunMeta('complete') });
+}
+// Ask the Checklist's own pass cache — separate localStorage key from checklistPassCache, same
+// resumability idea: if a scan fails partway through (network hiccup, stopped by hand), the
+// batches that already succeeded are cached, so clicking "Scan for Q&A" again only pays for and
+// risks the batches that never finished, instead of redoing the whole checklist from scratch.
+let askPassCache = {};
+const ASK_PASS_CACHE_KEY = 'modonix_ask_pass_cache';
+(function initAskPassCache(){
+  try{
+    const saved = localStorage.getItem(ASK_PASS_CACHE_KEY);
+    if(saved) askPassCache = JSON.parse(saved) || {};
+  }catch(e){ askPassCache = {}; }
+})();
+function saveAskPassCache(){
+  try{ localStorage.setItem(ASK_PASS_CACHE_KEY, JSON.stringify(askPassCache)); }
+  catch(e){ /* ignore */ }
+}
+function clearAskPassCache(){
+  askPassCache = {};
+  try{ localStorage.removeItem(ASK_PASS_CACHE_KEY); }catch(e){ /* ignore */ }
+}
+const ITEMS_PER_ASK_PASS = 25;
+// Answers every question in `structure` (the sections/questions outline from getAskStructure)
+// against `askPayload` (whatever bid-side data is currently loaded — same shape runAsk() sends).
+// Unlike runChecklistCompareMultiPass, which chunks the BID FINDINGS and re-checks the whole
+// checklist against each chunk, this chunks the QUESTIONS themselves and sends the (much smaller,
+// cached) bid-data payload as fixed context on every batch — each question only ever gets
+// answered once, so there's no cross-chunk merge/conflict logic needed, just a straight
+// one-answer-per-id assembly, with a guard against any id appearing twice in one response.
+async function runAskAnswerMultiPass(key, checklistNumber, structure, askPayload, inputsUsed, signal, onProgress, hintElId, forceFresh){
+  const payloadBlock = {type:"text", text:"PROJECT DATA (already extracted, use only this):\n\n"+JSON.stringify(askPayload, null, 2), cache_control:{type:"ephemeral"}};
+  const structureFingerprint = fnv1aString(JSON.stringify(structure));
+  const payloadFingerprint = fnv1aString(JSON.stringify(askPayload));
+  const promptFingerprint = fnv1aString(SYSTEM_ASK_ANSWER);
+  const flat = []; // [{id, question, ref, sectionId}]
+  (structure||[]).forEach(sec=>{
+    (sec.questions||[]).forEach(q=>{
+      flat.push({ id:q.id, question:q.question, ref:q.ref||'', sectionId:sec.id });
+    });
+  });
+  async function onePass(items){
+    const content = [
+      payloadBlock,
+      {type:"text", text:"QUESTIONS:\n\n"+JSON.stringify(items.map(i=>({id:i.id, question:i.question})), null, 2)},
+      {type:"text", text:"Answer every question as instructed. Return the JSON schema only."}
+    ];
+    return await fetchAndParseJSON(key, content, SYSTEM_ASK_ANSWER, signal, hintElId, "checklist Q&A answering");
+  }
+  const groups = chunkArray(flat, ITEMS_PER_ASK_PASS);
+  if(!groups.length) groups.push([]);
+  const cacheProjectKey = (document.getElementById('cloudProject').value.trim() || (askPayload&&askPayload.project) || 'untitled');
+  const answersById = {};
+  const extraByKey = {};
+  const extraOrder = [];
+  const MAX_ASK_EXTRA_FINDINGS = 60;
+  let completedCount = 0;
+  function buildRunMeta(status){
+    const needsHumanCount = Object.keys(answersById).filter(id=>answersById[id].needs_human).length;
+    return {
+      status: status,
+      questions_total: flat.length,
+      sections_total: (structure||[]).length,
+      structure_fingerprint: structureFingerprint,
+      total_chunks: groups.length,
+      completed_chunks: completedCount,
+      needs_human_count: needsHumanCount,
+      inputs_used: inputsUsed||[],
+      completed_at: new Date().toISOString()
+    };
+  }
+  function assemble(status){
+    const sections = (structure||[]).map(sec=>Object.assign({}, sec, {
+      questions: (sec.questions||[]).map(q=>{
+        const a = answersById[q.id];
+        return Object.assign({}, q, {
+          answer: a ? capAnswer(a.answer) : '',
+          needs_human: a ? !!a.needs_human : false,
+          human_reason: a ? capAnswer(a.human_reason||'', 150) : ''
+        });
+      })
+    }));
+    return { checklist_number: checklistNumber, sections, extra_findings: extraOrder.map(k=>extraByKey[k]), _run: buildRunMeta(status) };
+  }
+  for(let g=0; g<groups.length; g++){
+    if(onProgress) onProgress(g+1, groups.length, completedCount);
+    const groupIds = groups[g].map(i=>i.id).join(',');
+    const cacheKey = cacheProjectKey+'::ask_'+checklistNumber+'::prompt-'+promptFingerprint+'::structure-'+structureFingerprint+'::payload-'+payloadFingerprint+'::'+fnv1aString(groupIds);
+    let result;
+    try{
+      if(!forceFresh && askPassCache[cacheKey]){
+        result = askPassCache[cacheKey];
+      } else {
+        result = await onePass(groups[g]);
+        askPassCache[cacheKey] = result;
+        saveAskPassCache();
+      }
+    }catch(e){
+      e.partialAskResult = assemble('incomplete');
+      e.completedChunks = completedCount;
+      e.totalChunks = groups.length;
+      throw e;
+    }
+    // Guard against the same id appearing twice within one response (or, extremely unlikely,
+    // across overlapping retries) — last one wins, never two competing answers for one question.
+    (result.answers||[]).forEach(a=>{ if(a && a.id) answersById[a.id] = a; });
+    (result.extra_findings||[]).forEach(f=>{
+      const k = normalizeItemKey(f.item)+'::'+normalizeItemKey(f.reference);
+      if(k==='::' || (k in extraByKey)) return;
+      if(extraOrder.length >= MAX_ASK_EXTRA_FINDINGS) return;
+      extraByKey[k] = { item:f.item, reference:f.reference||'', why:f.why||'' };
+      extraOrder.push(k);
+    });
+    completedCount++;
+  }
+  return assemble('complete');
 }
 function mergeResults(results){
   const rank = {GREEN:0, YELLOW:1, RED:2};
@@ -4242,6 +4646,164 @@ function downloadKickoffPDF(btn){
     showKickoffErr("PDF download failed: " + e.message + ". Try <b>Download Excel</b> or <b>Copy as text</b> instead.");
   }
 }
+// Ask the Checklist: same "what's currently loaded" payload shape runAsk() below already sends
+// (spec extraction, both checklist coverages, drawing extraction, Checklist 3, kickoff sheet) —
+// reused here so the answers a scan produces are grounded in exactly the same data a live Ask
+// question would be. _run is stripped off each input before it's sent, same as Kickoff does.
+function buildAskScanPayload(){
+  const payload = { project: (lastData&&lastData.project) || (lastDwgData&&lastDwgData.project) || null };
+  const inputsUsed = [];
+  if(lastData){
+    payload.spec_extraction = { project:lastData.project, bid_due:lastData.bid_due, submit_to:lastData.submit_to, scores:lastData.scores, items:combinedBidItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    inputsUsed.push('Spec Extraction');
+  }
+  if(lastMasterCheck){ payload.checklist_1_coverage = stripRun(lastMasterCheck); inputsUsed.push('Checklist 1 coverage'); }
+  if(lastSecondCheck){ payload.checklist_2_coverage = stripRun(lastSecondCheck); inputsUsed.push('Checklist 2 coverage'); }
+  if(lastDwgData){
+    payload.drawing_extraction = { project:lastDwgData.project, scores:lastDwgData.scores, items:combinedDwgItems().map(i=>({category:i.category,topic:i.topic,requirement:i.requirement,detail:i.detail,source:i.source})) };
+    inputsUsed.push('Drawing Extraction');
+  }
+  if(lastThirdCheck){ payload.checklist_3_coverage = stripRun(lastThirdCheck); inputsUsed.push('Checklist 3 coverage'); }
+  if(lastKickoff){ payload.kickoff_sheet = stripRun(lastKickoff); inputsUsed.push('Kickoff Sheet'); }
+  return { payload, inputsUsed };
+}
+async function runAskScan(n, btn, forceFresh){
+  const msgEl = document.getElementById('askScan'+n+'Msg');
+  msgEl.innerHTML = '';
+  const usingPdf = askScanMode[n] === 'pdf';
+  const text = document.getElementById('askScan'+n+'Text').value.trim();
+  if(usingPdf && !askScanFile[n]){
+    msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Attach your Checklist '+n+' PDF above first, or switch to <b>Paste text</b>.</div>';
+    return;
+  }
+  if(!usingPdf && !text){
+    msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Paste your Checklist '+n+' reference text first, or switch to <b>Upload PDF</b>.</div>';
+    return;
+  }
+  const key = document.getElementById('key').value.trim();
+  if(!key){
+    msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Add your Anthropic API key up top first.</div>';
+    return;
+  }
+  const { payload, inputsUsed } = buildAskScanPayload();
+  if(!inputsUsed.length){
+    msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> Nothing is loaded for this project yet — run or load Bid Documents (and whichever else applies) on the tabs above first, so there\'s something to answer these questions from.</div>';
+    return;
+  }
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = usingPdf ? 'Reading checklist '+n+' PDF…' : 'Reading checklist '+n+' structure…';
+  askScanAbort[n] = new AbortController();
+  document.getElementById('askScan'+n+'Stop').classList.add('show');
+  try{
+    const structure = await getAskStructure(key, usingPdf, usingPdf ? askScanFile[n].buf : null, usingPdf ? null : text, askScanAbort[n].signal, 'askScan'+n+'Msg', forceFresh);
+    btn.textContent = 'Answering questions…';
+    const result = await runAskAnswerMultiPass(key, n, structure, payload, inputsUsed, askScanAbort[n].signal, (i,total)=>{ btn.textContent = total>1 ? ('Answering batch '+i+' of '+total+'…') : 'Answering questions…'; }, 'askScan'+n+'Msg', forceFresh);
+    setLastAskScanFor(n, result);
+    renderAskScanResult(n, result);
+    saveToCloud('ask_scan_'+n, result);
+    refreshAskBrowseOptions();
+    selectAskBrowseChecklist(n);
+  }catch(e){
+    console.error(e);
+    if(e.partialAskResult){
+      setLastAskScanFor(n, e.partialAskResult);
+      renderAskScanResult(n, e.partialAskResult);
+      saveToCloud('ask_scan_'+n, e.partialAskResult);
+      refreshAskBrowseOptions();
+      selectAskBrowseChecklist(n);
+      msgEl.insertAdjacentHTML('beforeend', '<div class="note" style="background:#FBECE4;border:1px solid #E8C4B0;color:#8A3010"><b>Stopped partway through, on an error.</b> Completed '+e.completedChunks+' of '+e.totalChunks+' batches before it broke — that work is saved and shown below, not lost. What went wrong: '+cleanErr(e.message)+' Click "Scan Checklist '+n+' for Q&amp;A" again — the batches already done won\'t be re-run or re-charged, only what\'s still missing.</div>');
+    } else if(e.name==='AbortError'){
+      msgEl.innerHTML = '<div class="note" style="background:#F3F4F6;border:1px solid #D7DBE0;color:#4B5563"><b>Stopped.</b> Run it again whenever you\'re ready.</div>';
+    } else {
+      msgEl.innerHTML = '<div class="note err"><b>Hold on.</b> '+cleanErr(e.message)+'</div>';
+    }
+  }finally{
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    document.getElementById('askScan'+n+'Stop').classList.remove('show');
+  }
+}
+function stopAskScan(n){
+  if(askScanAbort[n]) askScanAbort[n].abort();
+}
+function renderAskScanResult(n, d){
+  document.getElementById('askScan'+n+'Msg').innerHTML = askScanBannerHtml(d._run);
+}
+// Browse Answers: a pure read of whatever's already been scanned and saved above — none of
+// this ever calls the AI. Three cascading dropdowns (Checklist > Section > Question), each
+// repopulated from the previous selection.
+function selectAskBrowseChecklist(n){
+  const sel = document.getElementById('askBrowseChecklist');
+  if(sel.querySelector('option[value="'+n+'"]')){
+    sel.value = String(n);
+    onAskBrowseChecklistChange();
+  }
+}
+function refreshAskBrowseOptions(){
+  const available = [1,2,3].filter(n=>!!lastAskScanFor(n));
+  const emptyEl = document.getElementById('askBrowseEmpty');
+  const wrapEl = document.getElementById('askBrowseWrap');
+  if(!available.length){
+    emptyEl.style.display = '';
+    wrapEl.style.display = 'none';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  wrapEl.style.display = 'block';
+  const sel = document.getElementById('askBrowseChecklist');
+  const prevValue = sel.value;
+  sel.innerHTML = available.map(n=>{
+    const d = lastAskScanFor(n);
+    const qCount = (d._run && d._run.questions_total) || (d.sections||[]).reduce((s,sec)=>s+(sec.questions||[]).length,0);
+    return '<option value="'+n+'">Checklist '+n+' ('+qCount+' question'+(qCount===1?'':'s')+')</option>';
+  }).join('');
+  if(available.map(String).includes(prevValue)) sel.value = prevValue;
+  onAskBrowseChecklistChange();
+}
+function onAskBrowseChecklistChange(){
+  const n = Number(document.getElementById('askBrowseChecklist').value);
+  const d = lastAskScanFor(n);
+  document.getElementById('askBrowseChecklistBanner').innerHTML = d ? askScanBannerHtml(d._run) : '';
+  const secSel = document.getElementById('askBrowseSection');
+  const sections = (d && d.sections) || [];
+  secSel.innerHTML = sections.map((sec,i)=>'<option value="'+i+'">'+esc(sec.title||('Section '+(sec.id||(i+1))))+' ('+(sec.questions||[]).length+')</option>').join('');
+  onAskBrowseSectionChange();
+  document.getElementById('askBrowseExtra').innerHTML = d ? extraFindingsSectionHtml(d.extra_findings) : '';
+}
+function onAskBrowseSectionChange(){
+  const n = Number(document.getElementById('askBrowseChecklist').value);
+  const d = lastAskScanFor(n);
+  const secIdx = Number(document.getElementById('askBrowseSection').value);
+  const sec = d && d.sections && d.sections[secIdx];
+  const qSel = document.getElementById('askBrowseQuestion');
+  const questions = (sec && sec.questions) || [];
+  qSel.innerHTML = questions.map((q,i)=>{
+    const label = (q.ref ? q.ref+' — ' : '') + (q.question||'').slice(0,90);
+    return '<option value="'+i+'">'+esc(label)+'</option>';
+  }).join('');
+  renderAskBrowseAnswer();
+}
+function renderAskBrowseAnswer(){
+  const n = Number(document.getElementById('askBrowseChecklist').value);
+  const d = lastAskScanFor(n);
+  const secIdx = Number(document.getElementById('askBrowseSection').value);
+  const qIdx = Number(document.getElementById('askBrowseQuestion').value);
+  const sec = d && d.sections && d.sections[secIdx];
+  const q = sec && sec.questions && sec.questions[qIdx];
+  const wrap = document.getElementById('askBrowseAnswerWrap');
+  if(!q){ wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  document.getElementById('askBrowseQuestionText').textContent = (q.ref ? q.ref+'. ' : '') + (q.question||'');
+  document.getElementById('askBrowseAnswerText').textContent = q.answer || '(not answered)';
+  const humanEl = document.getElementById('askBrowseHumanNote');
+  if(q.needs_human){
+    humanEl.style.display = 'block';
+    humanEl.innerHTML = '<span class="stamp" style="background:#FBECE4;color:#8A3010;border-color:#E8C4B0">NEEDS HUMAN REVIEW</span> '+esc(q.human_reason||'');
+  } else {
+    humanEl.style.display = 'none';
+  }
+}
 function renderAskStatus(){
   const inputs = [
     { key:'Spec Extraction', ready: !!lastData },
@@ -4595,6 +5157,18 @@ function clearProject(btn){
   document.getElementById('askResults').style.display = 'none';
   document.getElementById('askMsg').innerHTML = '';
   renderAskStatus();
+  // Ask the Checklist is per-project like everything else above (the pass cache is keyed by
+  // project name), so a New Project reset clears its attachments and saved answers the same way
+  // it clears masterFile/secondFile/thirdFile and their results.
+  clearAskPassCache();
+  askScanFile = {1:null, 2:null, 3:null};
+  lastAskScan1 = null; lastAskScan2 = null; lastAskScan3 = null;
+  [1,2,3].forEach(n=>{
+    document.getElementById('askScan'+n+'File').value = '';
+    renderAskScanFile(n);
+    document.getElementById('askScan'+n+'Msg').innerHTML = '';
+  });
+  refreshAskBrowseOptions();
   flash(btn);
 }
 </script>
