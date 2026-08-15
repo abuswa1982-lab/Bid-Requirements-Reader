@@ -752,6 +752,10 @@
       <button class="stopbtn" id="askScan1Stop" onclick="stopAskScan(1)" type="button">Stop</button>
     </div>
     <div id="askScan1Msg" style="margin-top:12px"></div>
+    <div class="resbar" id="askScan1Export" style="display:none">
+      <button class="btn2 primary" onclick="downloadAskScanPDF(1,this)">Download PDF</button>
+      <button class="btn2" onclick="downloadAskScanExcel(1,this)">Download Excel</button>
+    </div>
     </div>
   </div>
   <div class="card">
@@ -783,6 +787,10 @@
       <button class="stopbtn" id="askScan2Stop" onclick="stopAskScan(2)" type="button">Stop</button>
     </div>
     <div id="askScan2Msg" style="margin-top:12px"></div>
+    <div class="resbar" id="askScan2Export" style="display:none">
+      <button class="btn2 primary" onclick="downloadAskScanPDF(2,this)">Download PDF</button>
+      <button class="btn2" onclick="downloadAskScanExcel(2,this)">Download Excel</button>
+    </div>
     </div>
   </div>
   <div class="card">
@@ -814,6 +822,10 @@
       <button class="stopbtn" id="askScan3Stop" onclick="stopAskScan(3)" type="button">Stop</button>
     </div>
     <div id="askScan3Msg" style="margin-top:12px"></div>
+    <div class="resbar" id="askScan3Export" style="display:none">
+      <button class="btn2 primary" onclick="downloadAskScanPDF(3,this)">Download PDF</button>
+      <button class="btn2" onclick="downloadAskScanExcel(3,this)">Download Excel</button>
+    </div>
     </div>
   </div>
   <div class="card">
@@ -1230,7 +1242,9 @@ async function loadCloudProject(btn){
     [1,2,3].forEach(n=>{
       const row = latestByPhase['ask_scan_'+n];
       if(row){
-        setLastAskScanFor(n, JSON.parse(row.data));
+        const parsed = JSON.parse(row.data);
+        setLastAskScanFor(n, parsed);
+        renderAskScanResult(n, parsed);
         askScanLoadedLabels.push('Checklist '+n+' Q&A');
       }
     });
@@ -4729,6 +4743,107 @@ function stopAskScan(n){
 }
 function renderAskScanResult(n, d){
   document.getElementById('askScan'+n+'Msg').innerHTML = askScanBannerHtml(d._run);
+  document.getElementById('askScan'+n+'Export').style.display = (d.sections||[]).length ? 'flex' : 'none';
+}
+function askScanFname(n, ext){
+  const base=(document.getElementById('proj').value||document.getElementById('cloudProject').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
+  return base+'-checklist-'+n+'-qa.'+ext;
+}
+// Both downloads below are laid out the way the checklist document itself reads — one heading
+// block per section, its own questions underneath — instead of one flat table with "Section"
+// repeated on every row. This matches how a person would actually flip through the original
+// checklist, not a database export of it.
+function downloadAskScanExcel(n, btn){
+  const d = lastAskScanFor(n);
+  if(!d) return;
+  if(typeof XLSX==='undefined') return showErr("The Excel library did not load. Check the connection and reload the page.");
+  try{
+    const rows = [
+      ['Checklist '+n+' — Q&A']
+    ];
+    (d.sections||[]).forEach(sec=>{
+      const qs = sec.questions||[];
+      if(!qs.length) return;
+      rows.push([]);
+      rows.push([sec.title||'Section']);
+      rows.push(['Ref','Question','Answer','Needs Human Review','Human Review Note']);
+      qs.forEach(q=>{
+        rows.push([q.ref||'', q.question||'', q.answer||'', q.needs_human?'Yes':'', q.needs_human?(q.human_reason||''):'']);
+      });
+    });
+    if((d.extra_findings||[]).length){
+      rows.push([]);
+      rows.push(['Additional Findings (not on the checklist)']);
+      rows.push(['Item','Reference','Why it matters']);
+      d.extra_findings.forEach(f=>{ rows.push([f.item||'', f.reference||'', f.why||'']); });
+    }
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:12},{wch:50},{wch:50},{wch:14},{wch:34}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Checklist '+n+' QA');
+    XLSX.writeFile(wb, askScanFname(n,'xlsx'));
+    if(btn) flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("Excel download failed: " + e.message);
+  }
+}
+function downloadAskScanPDF(n, btn){
+  const d = lastAskScanFor(n);
+  if(!d) return;
+  if(!window.jspdf||!window.jspdf.jsPDF) return showErr("The PDF library did not load. Check the connection and reload the page.");
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'pt',format:'letter'});
+    const M=40; const pageBottom=760; let y=50;
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
+    doc.text('Checklist '+n+' — Q&A', M, y); y+=24;
+    (d.sections||[]).forEach(sec=>{
+      const qs = sec.questions||[];
+      if(!qs.length) return;
+      if(y > pageBottom){ doc.addPage(); y = 50; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+      doc.text(sec.title||'Section', M, y); y += 8;
+      const body = qs.map(q=>{
+        let answerCell = q.answer||'';
+        if(q.needs_human){
+          answerCell = '[NEEDS HUMAN REVIEW] ' + (q.human_reason||'') + (answerCell ? ' — '+answerCell : '');
+        }
+        return [q.ref||'', q.question||'', answerCell];
+      });
+      doc.autoTable({
+        startY: y,
+        head: [['Ref','Question','Answer']],
+        body,
+        styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+        alternateRowStyles:{ fillColor:[247,249,251] },
+        columnStyles:{ 0:{cellWidth:50}, 1:{cellWidth:190}, 2:{cellWidth:'auto'} },
+        margin:{left:M,right:M}
+      });
+      y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
+    });
+    if((d.extra_findings||[]).length){
+      if(y > pageBottom){ doc.addPage(); y = 50; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+      doc.text('Additional Findings (not on the checklist)', M, y); y += 8;
+      doc.autoTable({
+        startY: y,
+        head: [['Item','Reference','Why it matters']],
+        body: d.extra_findings.map(f=>[f.item||'', f.reference||'', f.why||'']),
+        styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+        headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
+        alternateRowStyles:{ fillColor:[247,249,251] },
+        columnStyles:{ 0:{cellWidth:150}, 1:{cellWidth:80}, 2:{cellWidth:'auto'} },
+        margin:{left:M,right:M}
+      });
+    }
+    doc.save(askScanFname(n,'pdf'));
+    if(btn) flash(btn);
+  }catch(e){
+    console.error(e);
+    showErr("PDF download failed: " + e.message + ". Try Download Excel instead.");
+  }
 }
 // Browse Answers: a pure read of whatever's already been scanned and saved above — none of
 // this ever calls the AI. Three cascading dropdowns (Checklist > Section > Question), each
@@ -4769,7 +4884,20 @@ function onAskBrowseChecklistChange(){
   const sections = (d && d.sections) || [];
   secSel.innerHTML = sections.map((sec,i)=>'<option value="'+i+'">'+esc(sec.title||('Section '+(sec.id||(i+1))))+' ('+(sec.questions||[]).length+')</option>').join('');
   onAskBrowseSectionChange();
-  document.getElementById('askBrowseExtra').innerHTML = d ? extraFindingsSectionHtml(d.extra_findings) : '';
+  document.getElementById('askBrowseExtra').innerHTML = d ? askBrowseExtraHtml(d.extra_findings) : '';
+}
+// Same rows as extraFindingsSectionHtml (Checklist 1/2's own Additional Findings block), but
+// wrapped in a click-to-open header and collapsed by default — kept as its own function instead
+// of changing extraFindingsSectionHtml itself, so this stays purely additive and never touches
+// how Checklist 1/2's own on-screen results, copy text, Excel, or PDF render that section today.
+function askBrowseExtraHtml(list){
+  if(!list || !list.length) return '';
+  const rows = list.map(f=>'<div class="item"><div class="body"><div class="req">'+esc(f.item||'')
+    +(f.reference?' <span style="color:var(--muted);font-weight:400">— '+esc(f.reference)+'</span>':'')
+    +'</div><div class="det">'+esc(f.why||'')+'</div></div></div>').join('');
+  return '<div class="grp"><div class="grp-h collapsible-head" onclick="toggleCollapse(this)">'
+    + '<i class="chev" style="font-size:16px">&#9662;</i><span class="t">Additional Findings (not on the checklist)</span><span class="c">'+list.length+'</span></div>'
+    + '<div class="collapsible-body" style="display:none">'+rows+'</div></div>';
 }
 function onAskBrowseSectionChange(){
   const n = Number(document.getElementById('askBrowseChecklist').value);
@@ -5167,6 +5295,7 @@ function clearProject(btn){
     document.getElementById('askScan'+n+'File').value = '';
     renderAskScanFile(n);
     document.getElementById('askScan'+n+'Msg').innerHTML = '';
+    document.getElementById('askScan'+n+'Export').style.display = 'none';
   });
   refreshAskBrowseOptions();
   flash(btn);
