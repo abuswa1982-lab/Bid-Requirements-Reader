@@ -1906,10 +1906,7 @@ async function runDwgAddendum(){
           (testCap ? 'Stopping at page '+testCap+': ' : '') +
           'File ' + (i+1) + ' of ' + dwgAddendFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + batch.totalPages +
           ', batch ' + (b+1) + ' of ' + batches.length + '…';
-        const content = [
-          ...batch.images.map(img=>({type:"image",source:{type:"base64",media_type:img.mediaType,data:img.data}})),
-          {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"' to the drawing set"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued drawings. Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
-        ];
+        const content = buildDrawingContent(batch, "This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from an ADDENDUM named '"+name+"' to the drawing set"+(proj?(" for project: "+proj):"")+". It modifies or adds to previously issued drawings. Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low. Some pages may appear as a whole-sheet image followed by four overlapping zoomed quadrants of that SAME sheet — treat all of those as one page, not four separate pages, and don't report the same item twice just because it appears in more than one quadrant.");
         const parsed = await fetchAndParseJSON(key, content, SYSTEM_DRAWINGS, dwgAddendAbort.signal, 'dwgAddendRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
@@ -2007,7 +2004,25 @@ async function splitIntoBatches(fileBuf, pagesPerBatch){
 // stall with no response at all, likely from whatever has to happen server-side to handle a
 // page that large. Rendering to a capped, reasonable resolution first sidesteps that entirely:
 // same visual content, a normal-sized payload, regardless of how big the original sheet is.
+//
+// That single reduced image is enough to see the overall sheet layout, but on a genuinely large
+// sheet (D-size and up) it crushes small print — fixture tags, keynote bubbles, pipe sizes — down
+// past the point of being readable, even though the exact same detail is perfectly legible in the
+// original file. For an oversized page, this also renders four overlapping quarter-crops of that
+// SAME page at up to full resolution (capped the same way, just applied to a quarter of the sheet
+// instead of the whole thing), so small print actually survives somewhere. The whole-page image is
+// always included too, so the AI still has the overall layout for context — the quadrants are
+// extra detail stacked on top of it, never a replacement for it. Which pages get tiled is decided
+// purely by physical page size (a number the code reads straight from the PDF), not by asking the
+// AI whether a page "looks" too small — so behavior is the same every time for the same file.
+//
+// Also pulls the PDF's own embedded text layer per page, when it has one (true for CAD-exported
+// drawings like a Bluebeam/Revit/AutoCAD export, empty for a straight scan). That text is exact
+// and free, and immune to resolution entirely, so it rides along as a cross-reference the AI can
+// check small print against — never as a replacement for actually reading the sheet, since a
+// scanned or hand-marked sheet won't have one.
 const MAX_IMAGE_DIMENSION_PX = 1568; // Claude's vision system works natively up to about this size
+const TILE_OVERLAP_FRAC = 0.08; // quadrant overlap, so nothing sits exactly on a seam
 async function splitIntoImageBatches(fileBuf, pagesPerBatch){
   const pdfjsLib = await getPdfJs();
   const pdf = await pdfjsLib.getDocument({ data: fileBuf.slice(0) }).promise;
@@ -2017,10 +2032,12 @@ async function splitIntoImageBatches(fileBuf, pagesPerBatch){
   for(let start=1; start<=totalPages; start+=step){
     const end = Math.min(start+step-1, totalPages);
     const images = [];
+    const pageTexts = {};
     for(let p=start; p<=end; p++){
       const page = await pdf.getPage(p);
       const baseViewport = page.getViewport({ scale: 1 });
       const longSide = Math.max(baseViewport.width, baseViewport.height);
+      const oversized = longSide > MAX_IMAGE_DIMENSION_PX;
       const scale = Math.min(1, MAX_IMAGE_DIMENSION_PX / longSide); // never upscale a small page
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement('canvas');
@@ -2029,11 +2046,64 @@ async function splitIntoImageBatches(fileBuf, pagesPerBatch){
       const ctx = canvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport }).promise;
       const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      images.push({ data: dataUrl.split(',')[1], mediaType: 'image/jpeg' });
+      images.push({ data: dataUrl.split(',')[1], mediaType: 'image/jpeg', page: p,
+        label: oversized ? 'Whole sheet, reduced to fit (see the zoomed quadrants below for small print)' : '' });
+
+      if(oversized){
+        const tileScale = MAX_IMAGE_DIMENSION_PX / ((longSide/2) * (1+TILE_OVERLAP_FRAC));
+        const tileViewport = page.getViewport({ scale: tileScale });
+        const fullW = tileViewport.width, fullH = tileViewport.height;
+        const halfW = fullW/2, halfH = fullH/2;
+        const overlapW = halfW*TILE_OVERLAP_FRAC, overlapH = halfH*TILE_OVERLAP_FRAC;
+        const quadrants = [
+          { label:'Same sheet, top-left quadrant, zoomed in',     x0:0,              y0:0,              x1:halfW+overlapW, y1:halfH+overlapH },
+          { label:'Same sheet, top-right quadrant, zoomed in',    x0:halfW-overlapW, y0:0,              x1:fullW,          y1:halfH+overlapH },
+          { label:'Same sheet, bottom-left quadrant, zoomed in',  x0:0,              y0:halfH-overlapH, x1:halfW+overlapW, y1:fullH },
+          { label:'Same sheet, bottom-right quadrant, zoomed in', x0:halfW-overlapW, y0:halfH-overlapH, x1:fullW,          y1:fullH }
+        ];
+        for(const q of quadrants){
+          const w = Math.max(1, Math.round(q.x1-q.x0)), h = Math.max(1, Math.round(q.y1-q.y0));
+          const tCanvas = document.createElement('canvas');
+          tCanvas.width = w; tCanvas.height = h;
+          const tCtx = tCanvas.getContext('2d');
+          tCtx.translate(-q.x0, -q.y0);
+          await page.render({ canvasContext: tCtx, viewport: tileViewport }).promise;
+          const tDataUrl = tCanvas.toDataURL('image/jpeg', 0.9);
+          images.push({ data: tDataUrl.split(',')[1], mediaType: 'image/jpeg', page: p, label: q.label });
+        }
+      }
+
+      try{
+        const tc = await page.getTextContent();
+        const text = tc.items.map(it=>it.str).join(' ').replace(/[ \t]+/g,' ').trim();
+        if(text) pageTexts[p] = text;
+      }catch(e){ /* no text layer (scanned page) — images alone still carry it */ }
     }
-    batches.push({ images, startPage:start, endPage:end, totalPages });
+    batches.push({ images, pageTexts, startPage:start, endPage:end, totalPages });
   }
-  return batches.length ? batches : [{ images:[], startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
+  return batches.length ? batches : [{ images:[], pageTexts:{}, startPage:1, endPage:totalPages||1, totalPages: totalPages||1 }];
+}
+// Turns one image batch into the interleaved text/image content blocks sent to the API: a short
+// caption ahead of each page (naming the page and, when the PDF has one, its exact embedded text),
+// then that page's image(s) in order, then the trailing description of the whole batch. Shared by
+// both Drawings call sites so they can't drift out of sync with each other.
+function buildDrawingContent(batch, trailingText){
+  const content = [];
+  let currentPage = null;
+  for(const img of batch.images){
+    if(img.page !== currentPage){
+      currentPage = img.page;
+      let caption = 'Sheet page '+img.page+' of '+batch.totalPages+'.';
+      if(batch.pageTexts && batch.pageTexts[img.page]){
+        caption += ' This page\'s exact embedded PDF text (use it to confirm small print, tags, dimensions, and keynote numbers — it is precise and not affected by image resolution): "'+batch.pageTexts[img.page]+'"';
+      }
+      content.push({type:"text",text:caption});
+    }
+    if(img.label) content.push({type:"text",text:img.label+':'});
+    content.push({type:"image",source:{type:"base64",media_type:img.mediaType,data:img.data}});
+  }
+  content.push({type:"text",text:trailingText});
+  return content;
 }
 // Lazily loads pdf.js exactly once (dynamic import works fine outside a module script).
 // Only used by the Bid Documents "Extracted text" reading mode; Drawings and everything
@@ -2218,6 +2288,8 @@ const ORDER_DWG = ["Human Review Items","Hidden Scope Flags","Scope Items","Keyn
 const WATCH_BUCKETS_DWG = new Set(["Human Review Items","Hidden Scope Flags"]);
 const SYSTEM_DRAWINGS = `You are a senior construction estimator reading a drawing set for a plumbing/mechanical contractor, separately from the front-end spec. Your job is to find scope that the drawings show or imply, that a bid built only from the spec text could easily miss.
 Read every sheet provided: plans, details, sections, schedules, keynotes, and legends. Cross-reference keynotes and legend symbols against what actually appears on the plan sheets.
+Some large sheets are provided as more than one image: a whole-sheet overview (for overall layout) plus four overlapping zoomed quadrant crops of that SAME physical sheet (for small print). Treat every image tied to the same page number as one sheet, not several. Use the overview for layout and discipline coordination, and the quadrants to actually read small text — a fixture tag, keynote bubble, or pipe size that's a blur in the overview is often perfectly legible in whichever quadrant contains it. Never report the same finding twice just because it's visible in more than one image of the same sheet.
+Some pages also come with their own embedded PDF text, given to you as exact text right before that page's image(s). When present, it is precise and not affected by image resolution at all — use it to confirm exactly what a keynote, tag, dimension, or label says, especially if the image alone leaves you unsure. A page with no embedded text is usually a scan, so rely on the image(s) alone for it. Either way, only mark something illegible or low-resolution (a Human Review item) after you've checked every image AND the embedded text (if any) for that page — not just the whole-sheet overview alone.
 Sort every finding into exactly one of these four buckets:
 1. "Scope Items": concrete scope shown on the drawings — equipment, fixtures, piping runs, connections, demolition, and quantities that a takeoff needs to price. Include schedule/quantity call-outs (e.g. fixture schedules, equipment schedules).
 2. "Hidden Scope Flags": scope that is shown or implied on the drawings but is easy to miss because it is not called out in the front-end spec, buried in a keynote, shown only on one sheet out of a set, or requires coordination between disciplines (e.g. a mechanical connection shown only on an electrical sheet, or a note referencing another discipline's drawing that wasn't provided). This is the category that matters most: things that would otherwise get missed.
@@ -3215,11 +3287,8 @@ async function runDrawings(){
           (testCap ? 'Stopping at page '+testCap+': ' : '') +
           'File ' + (i+1) + ' of ' + dwgFiles.length + ' (' + f.name + '): pages ' + batch.startPage + '-' + batch.endPage + ' of ' + displayTotalPages +
           ', batch ' + (b+1) + ' of ' + displayTotalBatches + '…';
-        const content = [
-          ...batch.images.map(img=>({type:"image",source:{type:"base64",media_type:img.mediaType,data:img.data}})),
-          {type:"text",text:"This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
-            (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low."}
-        ];
+        const content = buildDrawingContent(batch, "This is pages "+batch.startPage+"-"+batch.endPage+" of "+batch.totalPages+" from the drawing set '"+f.name+"', one piece of a larger set split into batches for processing."+
+            (proj?(" Project: "+proj):"")+" Extract drawing findings as specified, but ONLY report what is actually shown in THESE pages. If a detail or keynote is clearly cut off at a page boundary, still report what you can see and set confidence to low. Some pages may appear as a whole-sheet image followed by four overlapping zoomed quadrants of that SAME sheet — treat all of those as one page, not four separate pages, and don't report the same item twice just because it appears in more than one quadrant.");
         const parsed = await fetchAndParseJSON(key, content, SYSTEM_DRAWINGS, dwgAbort.signal, 'dwgRunHint', "File '"+f.name+"' pages "+batch.startPage+"-"+batch.endPage);
         results.push(parsed);
         pagesProcessed += (batch.endPage - batch.startPage + 1);
