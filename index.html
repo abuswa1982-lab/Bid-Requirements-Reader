@@ -1085,7 +1085,7 @@ async function refreshProjectSuggestions(){
     const res = await fetch(workerUrl + '/projects');
     if(!res.ok) return;
     const body = await res.json();
-    const names = (body.results||[]).map(r=>r.project_name).filter(Boolean);
+    const names = (body.results||[]).map(r=>r.project_name).filter(n => n && !n.startsWith('__'));
     const list = document.getElementById('projectSuggestions');
     list.innerHTML = '';
     names.forEach(name=>{
