@@ -829,6 +829,41 @@
     </div>
   </div>
   <div class="card">
+    <div class="collapsible-head" onclick="toggleCollapse(this)">
+      <i class="chev" style="font-size:16px">&#9662;</i>
+    <h2>Checklist 4 &mdash; Attach &amp; Scan</h2>
+    </div>
+    <div class="collapsible-body" style="display:none">
+    <div class="toggle">
+      <button id="askScan4-tab-pdf" class="on" onclick="setAskScanMode(4,'pdf')" type="button">Upload PDF</button>
+      <button id="askScan4-tab-text" onclick="setAskScanMode(4,'text')" type="button">Paste text</button>
+    </div>
+    <div id="askScan4-mode-pdf">
+      <div class="drop" id="askScan4Drop">
+        <div class="big">Drop the Checklist 4 PDF here</div>
+        <div class="small">or click to choose. If it's a Word doc, use File &rarr; Save As &rarr; PDF first, then attach that.</div>
+      </div>
+      <input type="file" id="askScan4File" accept="application/pdf" style="display:none">
+      <div class="filelist" id="askScan4Filelist"></div>
+    </div>
+    <div id="askScan4-mode-text" style="display:none">
+      <textarea id="askScan4Text" placeholder="Paste Checklist 4 reference text here." style="min-height:110px"></textarea>
+    </div>
+    <div class="runbar" style="margin-top:14px">
+      <button class="run" id="askScan4Btn" onclick="runAskScan(4,this)">
+        <span class="spin" id="askScan4Spin"></span><span id="askScan4Label">Scan Checklist 4 for Q&amp;A</span>
+      </button>
+      <button class="btn2" onclick="runAskScan(4,this,true)" title="Ignores cache: re-reads the checklist PDF and re-answers every question from scratch. Use this after editing your checklist, to add new questions or update existing ones.">Force Fresh Run</button>
+      <button class="stopbtn" id="askScan4Stop" onclick="stopAskScan(4)" type="button">Stop</button>
+    </div>
+    <div id="askScan4Msg" style="margin-top:12px"></div>
+    <div class="resbar" id="askScan4Export" style="display:none">
+      <button class="btn2 primary" onclick="downloadAskScanPDF(4,this)">Download PDF</button>
+      <button class="btn2" onclick="downloadAskScanExcel(4,this)">Download Excel</button>
+    </div>
+    </div>
+  </div>
+  <div class="card">
     <h2>Browse Answers</h2>
     <p class="hint" style="margin:0 0 14px">Reads only what's already been scanned and saved above — picking a question here never calls the AI and never costs anything.</p>
     <div id="askBrowseEmpty" class="hint">Nothing scanned yet. Scan a checklist above first.</div>
@@ -952,12 +987,16 @@ let askAbort = null;
 // 1/2/3 above — its own upload slots, its own abort controllers, its own saved results. Nothing
 // here reads from or writes to masterFile/secondFile/thirdFile or lastMasterCheck/lastSecondCheck/
 // lastThirdCheck, on purpose, so building or changing this can never affect those tabs.
-let askScanMode = {1:'pdf', 2:'pdf', 3:'pdf'};
-let askScanFile = {1:null, 2:null, 3:null}; // {name, size, buf}
-let askScanAbort = {1:null, 2:null, 3:null};
-let lastAskScan1 = null, lastAskScan2 = null, lastAskScan3 = null;
-function lastAskScanFor(n){ return n===1?lastAskScan1:n===2?lastAskScan2:lastAskScan3; }
-function setLastAskScanFor(n, v){ if(n===1) lastAskScan1=v; else if(n===2) lastAskScan2=v; else lastAskScan3=v; }
+// The slots this tab offers. Adding a number here is all it takes to add another checklist:
+// the upload wiring, the cloud load, the browser and the New Project reset all read this list
+// rather than each carrying their own copy of 1, 2, 3.
+const ASK_SLOTS = [1,2,3,4];
+let askScanMode = {1:'pdf', 2:'pdf', 3:'pdf', 4:'pdf'};
+let askScanFile = {1:null, 2:null, 3:null, 4:null}; // {name, size, buf}
+let askScanAbort = {1:null, 2:null, 3:null, 4:null};
+let lastAskScanByNumber = {1:null, 2:null, 3:null, 4:null};
+function lastAskScanFor(n){ return lastAskScanByNumber[n] || null; }
+function setLastAskScanFor(n, v){ lastAskScanByNumber[n] = v; }
 let addendAbort = null;
 let addendums = []; // [{name, data}]
 let addendFiles = []; // [{name, size, buf}]
@@ -1085,7 +1124,7 @@ async function refreshProjectSuggestions(){
     const res = await fetch(workerUrl + '/projects');
     if(!res.ok) return;
     const body = await res.json();
-    const names = (body.results||[]).map(r=>r.project_name).filter(n => n && !n.startsWith('__'));
+    const names = (body.results||[]).map(r=>r.project_name).filter(Boolean);
     const list = document.getElementById('projectSuggestions');
     list.innerHTML = '';
     names.forEach(name=>{
@@ -1239,7 +1278,7 @@ async function loadCloudProject(btn){
       loaded.push('Kickoff Sheet');
     }
     const askScanLoadedLabels = [];
-    [1,2,3].forEach(n=>{
+    ASK_SLOTS.forEach(n=>{
       const row = latestByPhase['ask_scan_'+n];
       if(row){
         const parsed = JSON.parse(row.data);
@@ -1742,7 +1781,7 @@ function addAskScanFile(n, list){
   };
   reader.readAsArrayBuffer(f);
 }
-[1,2,3].forEach(n=>{
+ASK_SLOTS.forEach(n=>{
   const drop = document.getElementById('askScan'+n+'Drop');
   const fileInput = document.getElementById('askScan'+n+'File');
   drop.addEventListener('click', ()=>fileInput.click());
@@ -4814,6 +4853,23 @@ function renderAskScanResult(n, d){
   document.getElementById('askScan'+n+'Msg').innerHTML = askScanBannerHtml(d._run);
   document.getElementById('askScan'+n+'Export').style.display = (d.sections||[]).length ? 'flex' : 'none';
 }
+// The closing note on every answer sheet. Four short lines so the person holding the PDF can
+// tell an answer read out of the documents from a blank that means the documents are silent,
+// and both of those from a question no document could ever answer.
+function askScanLegendRows(d){
+  const run = d._run || {};
+  return [
+    ['An answer is written in the box', 'It was read out of the project documents named below. Check the reference before pricing.'],
+    ['"not stated" or a blank box', 'The documents that were read do not say. It is not a judgement that the item does not apply.'],
+    ['NEEDS HUMAN REVIEW', 'No document could answer this one. It needs a person: a decision, an outside lookup, or something checked on site.'],
+    ['Additional Findings', 'Things noticed in the documents that this checklist did not ask about, worth a second look.'],
+    ['Read from', (run.inputs_used && run.inputs_used.length) ? run.inputs_used.join(', ') : 'nothing loaded'],
+    ['Completeness', run.status === 'complete'
+        ? ((run.questions_total||0)+' of '+(run.questions_total||0)+' questions answered'+(run.needs_human_count?(', '+run.needs_human_count+' flagged for a person'):''))
+        : 'INCOMPLETE - only '+(run.completed_chunks||0)+' of '+(run.total_chunks||0)+' batches finished. Do not rely on this sheet.'],
+    ['Answered on', run.completed_at ? String(run.completed_at).slice(0,10) : '']
+  ];
+}
 function askScanFname(n, ext){
   const base=(document.getElementById('proj').value||document.getElementById('cloudProject').value||'bid').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'bid';
   return base+'-checklist-'+n+'-qa.'+ext;
@@ -4846,6 +4902,9 @@ function downloadAskScanExcel(n, btn){
       rows.push(['Item','Reference','Why it matters']);
       d.extra_findings.forEach(f=>{ rows.push([f.item||'', f.reference||'', f.why||'']); });
     }
+    rows.push([]);
+    rows.push(['How to read this sheet']);
+    askScanLegendRows(d).forEach(r=>rows.push([r[0], r[1]]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{wch:12},{wch:50},{wch:50},{wch:14},{wch:34}];
     const wb = XLSX.utils.book_new();
@@ -4907,6 +4966,19 @@ function downloadAskScanPDF(n, btn){
         margin:{left:M,right:M}
       });
     }
+    if(y > pageBottom - 120){ doc.addPage(); y = 50; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+    doc.text('How to read this sheet', M, y); y += 8;
+    doc.autoTable({
+      startY: y,
+      head: [['','']],
+      body: askScanLegendRows(d),
+      showHead: false,
+      styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
+      alternateRowStyles:{ fillColor:[247,249,251] },
+      columnStyles:{ 0:{cellWidth:150,fontStyle:'bold'}, 1:{cellWidth:'auto'} },
+      margin:{left:M,right:M}
+    });
     doc.save(askScanFname(n,'pdf'));
     if(btn) flash(btn);
   }catch(e){
@@ -4925,7 +4997,7 @@ function selectAskBrowseChecklist(n){
   }
 }
 function refreshAskBrowseOptions(){
-  const available = [1,2,3].filter(n=>!!lastAskScanFor(n));
+  const available = ASK_SLOTS.filter(n=>!!lastAskScanFor(n));
   const emptyEl = document.getElementById('askBrowseEmpty');
   const wrapEl = document.getElementById('askBrowseWrap');
   if(!available.length){
@@ -5359,8 +5431,8 @@ function clearProject(btn){
   // it clears masterFile/secondFile/thirdFile and their results.
   clearAskPassCache();
   askScanFile = {1:null, 2:null, 3:null};
-  lastAskScan1 = null; lastAskScan2 = null; lastAskScan3 = null;
-  [1,2,3].forEach(n=>{
+  ASK_SLOTS.forEach(n=>{ lastAskScanByNumber[n] = null; });
+  ASK_SLOTS.forEach(n=>{
     document.getElementById('askScan'+n+'File').value = '';
     renderAskScanFile(n);
     document.getElementById('askScan'+n+'Msg').innerHTML = '';
