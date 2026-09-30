@@ -52,6 +52,10 @@
     color:var(--navy);border:1.5px solid var(--navy);padding:3px 8px;border-radius:2px;
   }
   .brand-tag{font-size:12px;color:var(--muted);letter-spacing:.02em}
+  /* Which file is actually open. Without this there is no way to tell a hard-refreshed copy
+     from the one the browser kept in its cache, and every fix looks like it did not work. */
+  .buildstamp{font-family:var(--mono);font-size:11px;color:var(--navy);background:var(--blue-tint);
+    border:1px solid #CBDDEE;border-radius:3px;padding:2px 7px;letter-spacing:.02em}
   h1{
     font-family:var(--display);font-weight:700;font-size:30px;line-height:1.1;
     margin:0 0 6px;color:var(--navy);letter-spacing:-.01em;
@@ -232,6 +236,7 @@
       <div class="brandline">
         <span class="brandmark">MODONIX</span>
         <span class="brand-tag">Estimating tools · v2</span>
+        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30</b></span>
       </div>
       <h1>Bid Requirements Reader</h1>
       <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
