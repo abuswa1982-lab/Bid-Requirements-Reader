@@ -4965,7 +4965,13 @@ function downloadAskScanPDF(n, btn){
         columnStyles:{ 0:{cellWidth:150}, 1:{cellWidth:80}, 2:{cellWidth:'auto'} },
         margin:{left:M,right:M}
       });
+      // Move down past the table that was just drawn. Without this the next heading is
+      // printed at the position the LAST heading used, straight on top of these rows.
+      y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
     }
+    // A table paginates itself; a heading does not. Whatever was drawn last, start from the
+    // bottom of it, and take a fresh page if there is not room for the heading plus a row or two.
+    if(doc.lastAutoTable && doc.lastAutoTable.finalY) y = Math.max(y, doc.lastAutoTable.finalY + 22);
     if(y > pageBottom - 120){ doc.addPage(); y = 50; }
     doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
     doc.text('How to read this sheet', M, y); y += 8;
