@@ -236,7 +236,7 @@
       <div class="brandline">
         <span class="brandmark">MODONIX</span>
         <span class="brand-tag">Estimating tools · v2</span>
-        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30</b></span>
+        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30b</b></span>
       </div>
       <h1>Bid Requirements Reader</h1>
       <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
@@ -2481,7 +2481,7 @@ Return ONLY valid JSON, no prose, no markdown fences. Schema:
 // app; only reads whatever bid-side data is already loaded (same payload shape as SYSTEM_ASK).
 const SYSTEM_ASK_ANSWER = `You are answering a fixed list of checklist questions about one specific construction bid, using ONLY the project data provided — nothing assumed, nothing guessed, nothing from outside it.
 For EVERY question in QUESTIONS, provide exactly one answer:
-1. "answer": a real, specific, short answer drawn from the provided data. Hard limit: 300 characters, no exceptions — this is a quick-reference lookup, not a report. If the data genuinely doesn't say, answer plainly that it isn't stated in what's loaded, still under 300 characters.
+1. "answer": a real, specific answer drawn from the provided data, and a COMPLETE one — this goes into a document a customer reads, so an answer that stops mid-sentence is worse than a short one. Lead with the direct answer, then the evidence: spec section, page, amount, date. Hard limit: 700 characters. Finish your sentence inside that budget rather than running up against it; if there is more to say than fits, give the answer and the single most important reference and stop. If the data genuinely doesn't say, answer plainly that it isn't stated in what's loaded, in one short sentence.
 2. "needs_human": true ONLY for a question that isn't something the provided documents could ever answer even in principle — it requires a person to verify something outside the documents (an external license lookup, a subjective judgment call, physically confirming something on site, checking a system this app has no access to). Do NOT set this just because the answer happens to be missing from what's currently loaded — that's still a normal (if blank) AI answer, not a human-only question.
 3. "human_reason": if needs_human is true, one short phrase (under 150 characters) on what a human specifically needs to go check. Empty string otherwise.
 4. Some items are tagged with a source prefix like "[Addendum 2]", meaning they came from a later addendum, which ALWAYS supersedes the original on the exact same spec section or topic — answer using only the addendum's version when both exist.
@@ -2933,10 +2933,16 @@ async function getAskStructure(key, usingPdf, fileBuf, pastedText, signal, hintE
 // Defensive safety net for the 300-character answer cap SYSTEM_ASK_ANSWER is instructed to
 // follow — a prompt instruction alone can occasionally slip on an unusual response, and this
 // is cheap insurance against ever displaying, saving, or exporting something over the limit.
+// The backstop behind the instruction above, not the design. If it ever has to cut, it cuts at
+// a word boundary rather than through the middle of a spec number.
+const ASK_ANSWER_MAX = 700;
 function capAnswer(s, max){
   s = String(s||'');
-  max = max || 300;
-  return s.length > max ? s.slice(0, max-1)+'…' : s;
+  max = max || ASK_ANSWER_MAX;
+  if(s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > max*0.6 ? cut.slice(0, lastSpace) : cut) + '…';
 }
 async function runChecklistCompareMultiPass(key, checklistType, structuredChecklist, mainItems, addendaList, project, bidDue, systemPrompt, signal, onProgress, hintElId, itemsPerPass, forceFresh){
   itemsPerPass = itemsPerPass || ITEMS_PER_CHECKLIST_PASS;
@@ -4891,14 +4897,16 @@ function downloadAskScanExcel(n, btn){
     const rows = [
       ['Checklist '+n+' — Q&A']
     ];
+    // Only if this checklist actually numbers its items.
+    const hasRef = (d.sections||[]).some(sec=>(sec.questions||[]).some(q=>String(q.ref||'').trim()));
     (d.sections||[]).forEach(sec=>{
       const qs = sec.questions||[];
       if(!qs.length) return;
       rows.push([]);
       rows.push([sec.title||'Section']);
-      rows.push(['Ref','Question','Answer','Needs Human Review','Human Review Note']);
+      rows.push((hasRef?['Ref']:[]).concat(['Question','Answer','Needs Human Review','Human Review Note']));
       qs.forEach(q=>{
-        rows.push([q.ref||'', q.question||'', q.answer||'', q.needs_human?'Yes':'', q.needs_human?(q.human_reason||''):'']);
+        rows.push((hasRef?[q.ref||'']:[]).concat([q.question||'', q.answer||'', q.needs_human?'Yes':'', q.needs_human?(q.human_reason||''):'']));
       });
     });
     if((d.extra_findings||[]).length){
@@ -4911,7 +4919,7 @@ function downloadAskScanExcel(n, btn){
     rows.push(['How to read this sheet']);
     askScanLegendRows(d).forEach(r=>rows.push([r[0], r[1]]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:12},{wch:50},{wch:50},{wch:14},{wch:34}];
+    ws['!cols'] = (hasRef?[{wch:12}]:[]).concat([{wch:50},{wch:64},{wch:14},{wch:34}]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Checklist '+n+' QA');
     XLSX.writeFile(wb, askScanFname(n,'xlsx'));
@@ -4931,6 +4939,7 @@ function downloadAskScanPDF(n, btn){
     const M=40; const pageBottom=760; let y=50;
     doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
     doc.text('Checklist '+n+' — Q&A', M, y); y+=24;
+    const hasRef = (d.sections||[]).some(sec=>(sec.questions||[]).some(q=>String(q.ref||'').trim()));
     (d.sections||[]).forEach(sec=>{
       const qs = sec.questions||[];
       if(!qs.length) return;
@@ -4942,16 +4951,17 @@ function downloadAskScanPDF(n, btn){
         if(q.needs_human){
           answerCell = '[NEEDS HUMAN REVIEW] ' + (q.human_reason||'') + (answerCell ? ' — '+answerCell : '');
         }
-        return [q.ref||'', q.question||'', answerCell];
+        return (hasRef?[q.ref||'']:[]).concat([q.question||'', answerCell]);
       });
       doc.autoTable({
         startY: y,
-        head: [['Ref','Question','Answer']],
+        head: [(hasRef?['Ref']:[]).concat(['Question','Answer'])],
         body,
         styles:{ font:'helvetica', fontSize:9, cellPadding:5, valign:'top', textColor:[26,37,48], lineColor:[220,226,232], lineWidth:0.5, overflow:'linebreak' },
         headStyles:{ fillColor:[22,48,75], textColor:255, fontStyle:'bold' },
         alternateRowStyles:{ fillColor:[247,249,251] },
-        columnStyles:{ 0:{cellWidth:50}, 1:{cellWidth:190}, 2:{cellWidth:'auto'} },
+        columnStyles: hasRef ? { 0:{cellWidth:50}, 1:{cellWidth:180}, 2:{cellWidth:'auto'} }
+                             : { 0:{cellWidth:200}, 1:{cellWidth:'auto'} },
         margin:{left:M,right:M}
       });
       y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
