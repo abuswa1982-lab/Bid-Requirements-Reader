@@ -236,7 +236,7 @@
       <div class="brandline">
         <span class="brandmark">MODONIX</span>
         <span class="brand-tag">Estimating tools · v2</span>
-        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30c</b></span>
+        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-10-01</b></span>
       </div>
       <h1>Bid Requirements Reader</h1>
       <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
@@ -4070,6 +4070,9 @@ function downloadMasterCheckPDF(btn){
     });
     if((d.extra_findings||[]).length){
       let ey = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
+      // Same rule as the Q&A sheet: a heading only starts where a row can follow it, otherwise
+      // it is left stranded at the foot of the page with its table beginning on the next one.
+      if(ey > 760 - 150){ doc.addPage(); ey = 50; }
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
       doc.text('Additional Findings (not on the checklist)', M, ey); ey += 8;
       doc.autoTable({
@@ -4280,6 +4283,9 @@ function downloadSecondCheckPDF(btn){
     });
     if((d.extra_findings||[]).length){
       let ey = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
+      // Same rule as the Q&A sheet: a heading only starts where a row can follow it, otherwise
+      // it is left stranded at the foot of the page with its table beginning on the next one.
+      if(ey > 760 - 150){ doc.addPage(); ey = 50; }
       doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
       doc.text('Additional Findings (not on the checklist)', M, ey); ey += 8;
       doc.autoTable({
