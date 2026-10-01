@@ -236,7 +236,7 @@
       <div class="brandline">
         <span class="brandmark">MODONIX</span>
         <span class="brand-tag">Estimating tools · v2</span>
-        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30b</b></span>
+        <span class="buildstamp" title="The build of this file. If this is not the build you were sent, your browser is still showing a cached copy — press Ctrl+Shift+R.">build <b>2026-09-30c</b></span>
       </div>
       <h1>Bid Requirements Reader</h1>
       <p class="sub">Reads the bid front-end and sorts every finding into what you submit, what it costs, what puts the contract at risk, and what a human has to verify. Every item is stamped with <b>where it came from</b>, so you check the spec instead of trusting your memory.</p>
@@ -4937,15 +4937,22 @@ function downloadAskScanPDF(n, btn){
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({unit:'pt',format:'letter'});
     const M=40; const pageBottom=760; let y=50;
+    // A section heading plus its column bar plus one wrapped row needs roughly this much room.
+    // Start a section with less than this left and the heading is stranded at the foot of the
+    // page with nothing under it.
+    const NEED_FOR_SECTION = 150;
+    const startBlock = (title, need)=>{
+      if(y > pageBottom - (need || NEED_FOR_SECTION)){ doc.addPage(); y = 50; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
+      doc.text(title, M, y); y += 8;
+    };
     doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(22,48,75);
     doc.text('Checklist '+n+' — Q&A', M, y); y+=24;
     const hasRef = (d.sections||[]).some(sec=>(sec.questions||[]).some(q=>String(q.ref||'').trim()));
     (d.sections||[]).forEach(sec=>{
       const qs = sec.questions||[];
       if(!qs.length) return;
-      if(y > pageBottom){ doc.addPage(); y = 50; }
-      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
-      doc.text(sec.title||'Section', M, y); y += 8;
+      startBlock(sec.title||'Section');
       const body = qs.map(q=>{
         let answerCell = q.answer||'';
         if(q.needs_human){
@@ -4962,14 +4969,14 @@ function downloadAskScanPDF(n, btn){
         alternateRowStyles:{ fillColor:[247,249,251] },
         columnStyles: hasRef ? { 0:{cellWidth:50}, 1:{cellWidth:180}, 2:{cellWidth:'auto'} }
                              : { 0:{cellWidth:200}, 1:{cellWidth:'auto'} },
+        // keep a question and its answer on one page rather than tearing it in half
+        rowPageBreak:'avoid',
         margin:{left:M,right:M}
       });
       y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y) + 22;
     });
     if((d.extra_findings||[]).length){
-      if(y > pageBottom){ doc.addPage(); y = 50; }
-      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
-      doc.text('Additional Findings (not on the checklist)', M, y); y += 8;
+      startBlock('Additional Findings (not on the checklist)');
       doc.autoTable({
         startY: y,
         head: [['Item','Reference','Why it matters']],
@@ -4987,9 +4994,7 @@ function downloadAskScanPDF(n, btn){
     // A table paginates itself; a heading does not. Whatever was drawn last, start from the
     // bottom of it, and take a fresh page if there is not room for the heading plus a row or two.
     if(doc.lastAutoTable && doc.lastAutoTable.finalY) y = Math.max(y, doc.lastAutoTable.finalY + 22);
-    if(y > pageBottom - 120){ doc.addPage(); y = 50; }
-    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(22,48,75);
-    doc.text('How to read this sheet', M, y); y += 8;
+    startBlock('How to read this sheet', 200);
     doc.autoTable({
       startY: y,
       head: [['','']],
